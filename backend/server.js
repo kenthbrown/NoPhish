@@ -143,7 +143,7 @@ function detectDomainSignals(urls) {
       addSignal(
         `http:${url.host}`,
         "URL uses insecure HTTP instead of HTTPS",
-        "Insecure HTTP link detected (+15)",
+        "Insecure HTTP link detected",
         15,
         "Insecure Link"
       );
@@ -153,7 +153,7 @@ function detectDomainSignals(urls) {
       addSignal(
         `subdomains:${url.host}`,
         "URL uses excessive subdomains",
-        "Excessive subdomains detected (+20)",
+        "Excessive subdomains detected",
         20,
         "Suspicious Domain Pattern"
       );
@@ -163,7 +163,7 @@ function detectDomainSignals(urls) {
       addSignal(
         `shortener:${primaryDomain}`,
         `Uses URL shortener: "${primaryDomain}"`,
-        "Shortened URL detected (+25)",
+        "Shortened URL detected",
         25,
         "Shortened URL"
       );
@@ -179,7 +179,7 @@ function detectDomainSignals(urls) {
         addSignal(
           `lookalike:${primaryDomain}:${trustedDomain}`,
           `Possible lookalike domain impersonating ${trustedDomain}`,
-          `Lookalike domain detected (+35)`,
+          "Lookalike domain detected",
           35,
           "Lookalike Domain",
           trustedDomain
@@ -192,7 +192,7 @@ function detectDomainSignals(urls) {
         addSignal(
           `brand:${primaryDomain}:${trustedDomain}`,
           `Possible brand impersonation targeting ${trustedDomain}`,
-          `Trusted brand impersonation detected (+25)`,
+          "Trusted brand impersonation detected",
           25,
           "Brand Impersonation",
           trustedDomain
@@ -308,7 +308,7 @@ function analyzeText(text) {
   let result = "Safe";
   if (score >= 60) {
     result = "Likely Phishing";
-  } else if (score > 0) {
+  } else if (score >= 20) {
     result = "Suspicious";
   }
 
@@ -320,6 +320,7 @@ function analyzeText(text) {
     reasons,
     score,
     breakdown,
+    attackTypes: tags,
     tags,
     impersonatedBrands,
     explanation,

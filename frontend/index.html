@@ -15,6 +15,15 @@
       </header>
 
       <section class="hero card">
+        <div class="scenario-section scenario-section-top">
+          <p class="scenario-label">Demo Scenarios</p>
+          <div class="scenario-buttons">
+            <button class="scenario-button" type="button" data-scenario="safe">Safe Example</button>
+            <button class="scenario-button" type="button" data-scenario="suspicious">Suspicious Example</button>
+            <button class="scenario-button" type="button" data-scenario="phishing">Phishing Example</button>
+          </div>
+        </div>
+
         <label class="input-label" for="analysis-text">Paste a URL or email text</label>
         <textarea
           id="analysis-text"
@@ -27,15 +36,6 @@
             <button id="analyze-button" class="analyze-button">Analyze</button>
           </div>
           <p id="status-message" class="status-message" aria-live="polite"></p>
-        </div>
-
-        <div class="scenario-section">
-          <p class="scenario-label">Demo Scenarios</p>
-          <div class="scenario-buttons">
-            <button class="scenario-button" type="button" data-scenario="safe">Safe Site</button>
-            <button class="scenario-button" type="button" data-scenario="suspicious">Lookalike Login</button>
-            <button class="scenario-button" type="button" data-scenario="likely">Urgent Reset Scam</button>
-          </div>
         </div>
       </section>
 

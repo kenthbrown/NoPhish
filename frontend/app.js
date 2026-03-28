@@ -12,10 +12,9 @@ const statBrand = document.getElementById("stat-brand");
 const scenarioButtons = document.querySelectorAll("[data-scenario]");
 const defaultAnalyzeLabel = analyzeButton.textContent;
 const scenarios = {
-  safe: "https://www.apple.com/support/ This is the official support page for your account settings.",
-  suspicious: "Please review your login at https://paypaI.com-security-check.net before your account is limited.",
-  likely:
-    "URGENT: Your password expires today. Verify now at bit.ly/reset-now or your bank account will be suspended.",
+  safe: "https://www.paypal.com",
+  suspicious: "https://g00gle.com/login",
+  phishing: "URGENT: Verify your account now at bit.ly/login-secure",
 };
 let latestAnalysis = null;
 
@@ -69,6 +68,11 @@ function formatTimestamp(value) {
   });
 }
 
+function formatAuditPreview(value) {
+  const normalized = String(value).replace(/\s+/g, " ").trim();
+  return normalized.length > 88 ? `${normalized.slice(0, 85)}...` : normalized;
+}
+
 function renderResult(data) {
   if (!resultCard || !resultContent) {
     return;
@@ -84,7 +88,11 @@ function renderResult(data) {
   const explanation = typeof data.explanation === "string" && data.explanation.trim()
     ? data.explanation
     : "No additional explanation is available for this result.";
-  const tags = Array.isArray(data.tags) && data.tags.length ? data.tags : [];
+  const tags = Array.isArray(data.attackTypes) && data.attackTypes.length
+    ? data.attackTypes
+    : Array.isArray(data.tags) && data.tags.length
+      ? data.tags
+      : [];
 
   latestAnalysis = {
     text: analysisInput.value.trim(),
@@ -184,7 +192,7 @@ function renderAudit(entries) {
 
       const input = document.createElement("p");
       input.className = "audit-input";
-      input.textContent = entry.input.length > 120 ? `${entry.input.slice(0, 117)}...` : entry.input;
+      input.textContent = formatAuditPreview(entry.input);
 
       item.append(meta, input);
       auditList.appendChild(item);
@@ -284,9 +292,9 @@ async function analyzeInput() {
 }
 
 function fillScenario(name) {
-  analysisInput.value = scenarios[name] || scenarios.likely;
+  analysisInput.value = scenarios[name] || scenarios.phishing;
   analysisInput.focus();
-  setStatus("Demo scenario loaded. Click Analyze to test it.");
+  setStatus("Demo scenario loaded.");
 }
 
 async function reportLatestAnalysis() {
