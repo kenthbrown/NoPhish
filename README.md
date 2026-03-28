@@ -34,6 +34,14 @@ NoPhish is a cybersecurity demo website for helping users identify possible phis
 - Exportable JSON analysis reports including score, attack types, reasons, breakdown, target brand, explanation, and timestamp
 - Analyst Summary output for a concise SOC-style assessment of the latest analysis
 
+## Level 6 Features
+
+- Recent Checks deduplication using a stable scan key to prevent duplicate entries during auto-refresh
+- Clickable Recent Checks items that load a full Scan Details inspection panel
+- Scan Details panel showing saved input, result, score, attack types, reasons, breakdown, explanation, analyst summary, and timestamp
+- Secondary trend metrics for highest risk score, average risk score, latest target brand, and most common attack type
+- More analyst-friendly workflow for reviewing historical scans without rerunning analysis
+
 ## Run Locally
 
 ```bash

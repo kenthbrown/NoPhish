@@ -302,6 +302,21 @@ function buildDangerExplanation(result, domainSignals, keywordMatches, hasUrgenc
   return "This input shows phishing-style warning signs that could pressure a user into clicking a deceptive link or sharing sensitive information.";
 }
 
+function buildAnalystSummary(result, attackTypes, targetBrand) {
+  if (result === "Safe") {
+    return "This scan did not trigger meaningful phishing indicators under the current detection rules.";
+  }
+
+  const primaryType = attackTypes[0] || "deceptive messaging";
+  const brandText = targetBrand ? ` targeting ${targetBrand}` : "";
+
+  if (result === "Likely Phishing") {
+    return `This scan indicates a likely phishing attempt using ${primaryType.toLowerCase()}${brandText}.`;
+  }
+
+  return `This scan shows suspicious signs of ${primaryType.toLowerCase()}${brandText} and warrants analyst review.`;
+}
+
 function analyzeText(text) {
   const normalizedText = text.toLowerCase();
   const reasons = [];
@@ -398,6 +413,7 @@ function analyzeText(text) {
     hasUrgency,
     targetBrand
   );
+  const analystSummary = buildAnalystSummary(result, tags, targetBrand);
 
   return {
     result,
@@ -410,6 +426,7 @@ function analyzeText(text) {
     impersonatedBrands,
     targetBrand,
     explanation,
+    analystSummary,
   };
 }
 
@@ -429,9 +446,14 @@ app.post("/analyze", (req, res) => {
     input: text,
     result: analysis.result,
     score: analysis.confidence,
+    attackTypes: analysis.attackTypes,
     tags: analysis.tags,
     impersonatedBrands: analysis.impersonatedBrands,
     targetBrand: analysis.targetBrand,
+    reasons: analysis.reasons,
+    breakdown: analysis.breakdown,
+    explanation: analysis.explanation,
+    analystSummary: analysis.analystSummary,
   });
 
   return res.json(analysis);

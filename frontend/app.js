@@ -5,11 +5,16 @@ const statusMessage = document.getElementById("status-message");
 const resultCard = document.getElementById("result-card");
 const resultContent = document.getElementById("result-content");
 const recentChecks = document.getElementById("recentChecks");
+const scanDetails = document.getElementById("scanDetails");
 const chartBars = document.getElementById("chart-bars");
 const statAnalyses = document.getElementById("stat-analyses");
 const statDetections = document.getElementById("stat-detections");
 const statReports = document.getElementById("stat-reports");
 const statBrand = document.getElementById("stat-brand");
+const trendHighest = document.getElementById("trend-highest");
+const trendAverage = document.getElementById("trend-average");
+const trendLatestBrand = document.getElementById("trend-latest-brand");
+const trendCommonAttack = document.getElementById("trend-common-attack");
 const scenarioButtons = document.querySelectorAll("[data-scenario]");
 const filterButtons = document.querySelectorAll("[data-filter]");
 const defaultAnalyzeLabel = analyzeButton.textContent;
@@ -22,6 +27,7 @@ let latestAnalysis = null;
 let latestAuditEntries = [];
 let activeFilter = "All";
 let autoRefreshId = null;
+let selectedScanKey = null;
 
 function getResultClass(result) {
   if (result === "Safe") {
@@ -78,11 +84,15 @@ function formatAuditPreview(value) {
   return normalized.length > 88 ? `${normalized.slice(0, 85)}...` : normalized;
 }
 
+function getRecentCheckKey(entry) {
+  return `${entry.timestamp || ""}::${entry.input || ""}::${entry.result || ""}`;
+}
+
 function dedupeRecentChecks(entries) {
   const seen = new Set();
 
   return entries.filter((entry) => {
-    const key = `${entry.timestamp || ""}::${entry.input || ""}`;
+    const key = getRecentCheckKey(entry);
 
     if (seen.has(key)) {
       return false;
@@ -177,10 +187,126 @@ function renderChart(entries) {
     .join("");
 }
 
+function renderTrendStats(entries) {
+  const emptyValue = "\u2014";
+
+  if (!entries.length) {
+    setElementText(trendHighest, emptyValue);
+    setElementText(trendAverage, emptyValue);
+    setElementText(trendLatestBrand, emptyValue);
+    setElementText(trendCommonAttack, emptyValue);
+    return;
+  }
+
+  const scores = entries
+    .map((entry) => Number(entry.score))
+    .filter((value) => Number.isFinite(value));
+  const highest = scores.length ? Math.max(...scores) : null;
+  const average = scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : null;
+  const latestBrand = [...entries]
+    .reverse()
+    .find((entry) => typeof entry.targetBrand === "string" && entry.targetBrand.trim())?.targetBrand || emptyValue;
+  const attackCounts = {};
+
+  entries.forEach((entry) => {
+    (entry.attackTypes || []).forEach((type) => {
+      attackCounts[type] = (attackCounts[type] || 0) + 1;
+    });
+  });
+
+  const mostCommonAttack = Object.entries(attackCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || emptyValue;
+
+  setElementText(trendHighest, highest === null ? emptyValue : `${highest}%`);
+  setElementText(trendAverage, average === null ? emptyValue : `${average}%`);
+  setElementText(trendLatestBrand, latestBrand);
+  setElementText(trendCommonAttack, mostCommonAttack);
+}
+
 function applyFilterState() {
   filterButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.filter === activeFilter);
   });
+}
+
+function buildDetailsMarkup(entry) {
+  const confidence = Number.isFinite(Number(entry.score)) ? Number(entry.score) : 0;
+  const attackTypes = Array.isArray(entry.attackTypes) ? entry.attackTypes : [];
+  const reasons = Array.isArray(entry.reasons) && entry.reasons.length
+    ? entry.reasons
+    : ["No detailed reasons available for this scan."];
+  const breakdown = Array.isArray(entry.breakdown) && entry.breakdown.length
+    ? entry.breakdown
+    : ["No confidence breakdown available for this scan."];
+  const explanation = typeof entry.explanation === "string" && entry.explanation.trim()
+    ? entry.explanation
+    : "No explanation was recorded for this scan.";
+  const analystSummary = typeof entry.analystSummary === "string" && entry.analystSummary.trim()
+    ? entry.analystSummary
+    : buildAnalystSummary(entry.result, attackTypes, entry.targetBrand || "");
+
+  return `
+    <div class="section-header">
+      <h2>Scan Details</h2>
+      <span class="result-badge ${getResultClass(entry.result)}">${escapeHtml(entry.result)}</span>
+    </div>
+    <div class="result-meta">
+      <p class="confidence-line"><strong>Risk Score:</strong> <span class="confidence-value">${confidence}%</span></p>
+      <p class="confidence-line"><strong>Timestamp:</strong> ${escapeHtml(formatTimestamp(entry.timestamp))}</p>
+    </div>
+    <div>
+      <h3>Analyzed Input</h3>
+      <p class="detail-input">${escapeHtml(entry.input || "")}</p>
+    </div>
+    ${entry.targetBrand ? `
+      <div>
+        <h3>Target Brand</h3>
+        <p class="target-brand">${escapeHtml(entry.targetBrand)}</p>
+      </div>
+    ` : ""}
+    ${attackTypes.length ? `
+      <div>
+        <h3>Attack Types</h3>
+        <ul class="tag-list">
+          ${attackTypes.map((tag) => `<li>${getAttackTypeMarkup(tag)}</li>`).join("")}
+        </ul>
+      </div>
+    ` : ""}
+    <div>
+      <h3>Reasons</h3>
+      <ul class="reasons-list">
+        ${reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}
+      </ul>
+    </div>
+    <div>
+      <h3>Confidence Breakdown</h3>
+      <ul class="reasons-list">
+        ${breakdown.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+      </ul>
+    </div>
+    <div class="danger-box">
+      <h3>Why this is dangerous:</h3>
+      <p class="danger-explanation">${escapeHtml(explanation)}</p>
+    </div>
+    <div class="summary-box">
+      <h3>Analyst Summary</h3>
+      <p class="danger-explanation">${escapeHtml(analystSummary)}</p>
+    </div>
+  `;
+}
+
+function renderScanDetails(entry) {
+  if (!scanDetails) {
+    return;
+  }
+
+  if (!entry) {
+    scanDetails.className = "scan-details-empty";
+    scanDetails.textContent = "Select a recent check to inspect details.";
+    return;
+  }
+
+  scanDetails.className = "scan-details-content";
+  scanDetails.innerHTML = buildDetailsMarkup(entry);
 }
 
 function renderResult(data) {
@@ -323,6 +449,10 @@ function renderAudit(entries) {
     .forEach((entry) => {
       const item = document.createElement("article");
       item.className = "audit-item";
+      item.tabIndex = 0;
+      item.setAttribute("role", "button");
+      const entryKey = getRecentCheckKey(entry);
+      item.classList.toggle("active", entryKey === selectedScanKey);
 
       const meta = document.createElement("div");
       meta.className = "audit-meta";
@@ -341,6 +471,19 @@ function renderAudit(entries) {
       input.textContent = formatAuditPreview(entry.input);
 
       item.append(meta, input);
+      item.addEventListener("click", () => {
+        selectedScanKey = entryKey;
+        renderAudit(latestAuditEntries);
+        renderScanDetails(entry);
+      });
+      item.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          selectedScanKey = entryKey;
+          renderAudit(latestAuditEntries);
+          renderScanDetails(entry);
+        }
+      });
       recentChecks.appendChild(item);
     });
 }
@@ -362,6 +505,18 @@ async function loadRecentChecks() {
     latestAuditEntries = dedupeRecentChecks(await response.json());
     renderAudit(latestAuditEntries);
     renderChart(latestAuditEntries);
+    renderTrendStats(latestAuditEntries);
+
+    if (selectedScanKey) {
+      const selectedEntry = latestAuditEntries.find((entry) => getRecentCheckKey(entry) === selectedScanKey);
+      renderScanDetails(selectedEntry || null);
+
+      if (!selectedEntry) {
+        selectedScanKey = null;
+      }
+    } else {
+      renderScanDetails(null);
+    }
   } catch (error) {
     if (!recentChecks) {
       return;
@@ -373,6 +528,7 @@ async function loadRecentChecks() {
     empty.className = "empty-state";
     empty.textContent = error.message;
     recentChecks.appendChild(empty);
+    renderTrendStats([]);
   } finally {
     if (refreshButton) {
       refreshButton.disabled = false;

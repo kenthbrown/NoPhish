@@ -65,6 +65,24 @@
             <strong id="stat-brand" class="stat-brand">—</strong>
           </article>
         </div>
+        <div id="trend-grid" class="trend-grid">
+          <article class="stat-item">
+            <span class="stat-label">Highest Risk Score Seen</span>
+            <strong id="trend-highest">&#8212;</strong>
+          </article>
+          <article class="stat-item">
+            <span class="stat-label">Average Risk Score</span>
+            <strong id="trend-average">&#8212;</strong>
+          </article>
+          <article class="stat-item">
+            <span class="stat-label">Latest Target Brand</span>
+            <strong id="trend-latest-brand" class="stat-brand">&#8212;</strong>
+          </article>
+          <article class="stat-item">
+            <span class="stat-label">Most Common Attack Type</span>
+            <strong id="trend-common-attack" class="stat-brand">&#8212;</strong>
+          </article>
+        </div>
       </section>
 
       <section class="card chart-card">
@@ -90,6 +108,13 @@
         </div>
 
         <div id="recentChecks" class="audit-list"></div>
+      </section>
+
+      <section class="card details-card">
+        <div class="section-header">
+          <h2>Scan Details</h2>
+        </div>
+        <div id="scanDetails" class="scan-details-empty">Select a recent check to inspect details.</div>
       </section>
 
       <section class="card tips-card">
