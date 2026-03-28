@@ -122,6 +122,71 @@ function getBrandToken(domain) {
   return domain.split(".")[0];
 }
 
+function levenshteinDistance(left, right) {
+  const matrix = Array.from({ length: left.length + 1 }, () => Array(right.length + 1).fill(0));
+
+  for (let row = 0; row <= left.length; row += 1) {
+    matrix[row][0] = row;
+  }
+
+  for (let col = 0; col <= right.length; col += 1) {
+    matrix[0][col] = col;
+  }
+
+  for (let row = 1; row <= left.length; row += 1) {
+    for (let col = 1; col <= right.length; col += 1) {
+      const cost = left[row - 1] === right[col - 1] ? 0 : 1;
+      matrix[row][col] = Math.min(
+        matrix[row - 1][col] + 1,
+        matrix[row][col - 1] + 1,
+        matrix[row - 1][col - 1] + cost
+      );
+    }
+  }
+
+  return matrix[left.length][right.length];
+}
+
+function normalizeSimilarityToken(value) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function getSimilarityScore(left, right) {
+  const normalizedLeft = normalizeSimilarityToken(left);
+  const normalizedRight = normalizeSimilarityToken(right);
+
+  if (!normalizedLeft || !normalizedRight) {
+    return 0;
+  }
+
+  const distance = levenshteinDistance(normalizedLeft, normalizedRight);
+  return 1 - distance / Math.max(normalizedLeft.length, normalizedRight.length);
+}
+
+function findClosestTrustedBrand(domain) {
+  const token = getBrandToken(domain);
+  let bestMatch = null;
+
+  trustedDomains.forEach((trustedDomain) => {
+    if (domain === trustedDomain) {
+      return;
+    }
+
+    const trustedToken = getBrandToken(trustedDomain);
+    const similarity = getSimilarityScore(token, trustedToken);
+
+    if (!bestMatch || similarity > bestMatch.similarity) {
+      bestMatch = {
+        domain: trustedDomain,
+        token: trustedToken,
+        similarity,
+      };
+    }
+  });
+
+  return bestMatch;
+}
+
 function detectDomainSignals(urls) {
   const signals = [];
   const seen = new Set();
@@ -169,51 +234,64 @@ function detectDomainSignals(urls) {
       );
     }
 
-    trustedDomains.forEach((trustedDomain) => {
-      if (primaryDomain === trustedDomain) {
-        return;
-      }
+    const closestBrand = findClosestTrustedBrand(primaryDomain);
+    if (!closestBrand) {
+      return;
+    }
 
-      const lookalikeRegex = buildLookalikeRegex(trustedDomain);
-      if (lookalikeRegex.test(primaryDomain)) {
-        addSignal(
-          `lookalike:${primaryDomain}:${trustedDomain}`,
-          `Possible lookalike domain impersonating ${trustedDomain}`,
-          "Lookalike domain detected",
-          35,
-          "Lookalike Domain",
-          trustedDomain
-        );
-        return;
-      }
+    const lookalikeRegex = buildLookalikeRegex(closestBrand.domain);
+    if (lookalikeRegex.test(primaryDomain) || closestBrand.similarity >= 0.72) {
+      addSignal(
+        `lookalike:${primaryDomain}:${closestBrand.domain}`,
+        `Domain closely resembles trusted brand ${closestBrand.domain}`,
+        "Lookalike domain detected",
+        40,
+        "Lookalike Domain",
+        closestBrand.domain
+      );
+      return;
+    }
 
-      const trustedToken = getBrandToken(trustedDomain);
-      if (primaryDomain.includes(trustedToken)) {
-        addSignal(
-          `brand:${primaryDomain}:${trustedDomain}`,
-          `Possible brand impersonation targeting ${trustedDomain}`,
-          "Trusted brand impersonation detected",
-          25,
-          "Brand Impersonation",
-          trustedDomain
-        );
-      }
-    });
+    if (primaryDomain.includes(closestBrand.token) && closestBrand.similarity >= 0.45) {
+      addSignal(
+        `brand:${primaryDomain}:${closestBrand.domain}`,
+        `Possible brand impersonation targeting ${closestBrand.domain}`,
+        "Trusted brand impersonation detected",
+        28,
+        "Brand Impersonation",
+        closestBrand.domain
+      );
+    }
   });
 
   return signals;
 }
 
-function buildDangerExplanation(result, domainSignals, keywordMatches, hasUrgency) {
+function buildDangerExplanation(result, domainSignals, keywordMatches, hasUrgency, targetBrand) {
   if (result === "Safe") {
     return "This content did not trigger any major phishing indicators in the current heuristic checks.";
   }
 
-  if (domainSignals.some((signal) => signal.reason.includes("lookalike domain"))) {
-    return "This content appears to mimic a trusted brand with a deceptive domain, which could trick someone into entering credentials or payment details.";
+  const mainTechnique =
+    domainSignals.find((signal) => signal.tag === "Lookalike Domain")?.tag ||
+    domainSignals.find((signal) => signal.tag === "Brand Impersonation")?.tag ||
+    domainSignals.find((signal) => signal.tag === "Shortened URL")?.tag ||
+    (hasUrgency ? "Urgency Language" : null) ||
+    (keywordMatches.length ? "Credential Harvesting" : null);
+
+  if (targetBrand && mainTechnique === "Lookalike Domain") {
+    return `This URL appears to imitate ${targetBrand} using a deceptive lookalike domain and could be used to steal credentials.`;
   }
 
-  if (domainSignals.some((signal) => signal.reason.includes("URL shortener"))) {
+  if (targetBrand && mainTechnique === "Brand Impersonation") {
+    return `This content appears to target ${targetBrand} using brand impersonation to make the request seem trustworthy.`;
+  }
+
+  if (targetBrand && keywordMatches.length) {
+    return `This content appears to target ${targetBrand} and uses login-themed language that could be used to steal account credentials.`;
+  }
+
+  if (mainTechnique === "Shortened URL") {
     return "This content hides its real destination behind a shortened link, making it harder to verify where the user would actually land.";
   }
 
@@ -262,7 +340,7 @@ function analyzeText(text) {
 
   const hasUrgency = urgencySignals.some((term) => normalizedText.includes(term));
   if (hasUrgency) {
-    addSignal("urgency", "Urgency language detected", "Urgency language detected", 20, "Urgency Language");
+    addSignal("urgency", "Urgency language detected", "Urgency language detected", 16, "Urgency Language");
   }
 
   keywordSignals.forEach((signal) => {
@@ -272,7 +350,7 @@ function analyzeText(text) {
         `keyword:${signal.term}`,
         `Contains suspicious keyword: "${signal.term}"`,
         `Suspicious keyword detected: ${signal.term}`,
-        signal.points,
+        signal.term === "bank" ? 8 : 6,
         ["verify", "login", "password", "account"].includes(signal.term) ? "Credential Harvesting" : null
       );
     }
@@ -285,23 +363,23 @@ function analyzeText(text) {
 
   if (hasAtSymbolInUrl(text)) {
     addSignal(
-      "obscured-destination",
-      'URL contains "@" which can obscure the true destination',
-      'Obscured destination pattern detected',
-      20,
-      "Suspicious Domain Pattern"
-    );
-  }
+        "obscured-destination",
+        'URL contains "@" which can obscure the true destination',
+        'Obscured destination pattern detected',
+        18,
+        "Suspicious Domain Pattern"
+      );
+    }
 
   if (hasLongRandomLookingString(text)) {
     addSignal(
-      "random-string",
-      "Contains a long random-looking string",
-      "Long random-looking string detected",
-      20,
-      "Suspicious Domain Pattern"
-    );
-  }
+        "random-string",
+        "Contains a long random-looking string",
+        "Long random-looking string detected",
+        16,
+        "Suspicious Domain Pattern"
+      );
+    }
 
   score = Math.min(score, 100);
 
@@ -312,7 +390,14 @@ function analyzeText(text) {
     result = "Suspicious";
   }
 
-  const explanation = buildDangerExplanation(result, domainSignals, keywordMatches, hasUrgency);
+  const targetBrand = impersonatedBrands[0] || null;
+  const explanation = buildDangerExplanation(
+    result,
+    domainSignals,
+    keywordMatches,
+    hasUrgency,
+    targetBrand
+  );
 
   return {
     result,
@@ -323,6 +408,7 @@ function analyzeText(text) {
     attackTypes: tags,
     tags,
     impersonatedBrands,
+    targetBrand,
     explanation,
   };
 }
@@ -345,6 +431,7 @@ app.post("/analyze", (req, res) => {
     score: analysis.confidence,
     tags: analysis.tags,
     impersonatedBrands: analysis.impersonatedBrands,
+    targetBrand: analysis.targetBrand,
   });
 
   return res.json(analysis);

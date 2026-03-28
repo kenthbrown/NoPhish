@@ -88,6 +88,9 @@ function renderResult(data) {
   const explanation = typeof data.explanation === "string" && data.explanation.trim()
     ? data.explanation
     : "No additional explanation is available for this result.";
+  const targetBrand = typeof data.targetBrand === "string" && data.targetBrand.trim()
+    ? data.targetBrand
+    : "";
   const tags = Array.isArray(data.attackTypes) && data.attackTypes.length
     ? data.attackTypes
     : Array.isArray(data.tags) && data.tags.length
@@ -112,6 +115,13 @@ function renderResult(data) {
     <div class="result-meta">
       <p class="confidence-line"><strong>Confidence:</strong> <span class="confidence-value">${confidence}%</span></p>
     </div>
+
+    ${targetBrand ? `
+      <div>
+        <h3>Target Brand</h3>
+        <p class="target-brand">${escapeHtml(targetBrand)}</p>
+      </div>
+    ` : ""}
 
     ${tags.length ? `
       <div>

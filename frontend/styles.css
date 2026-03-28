@@ -222,6 +222,13 @@ h3 {
   color: var(--primary-dark);
 }
 
+.target-brand {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
 .risk-safe .confidence-value {
   color: var(--safe);
 }
