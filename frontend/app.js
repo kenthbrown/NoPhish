@@ -1,10 +1,10 @@
 const analyzeButton = document.getElementById("analyze-button");
-const refreshAuditButton = document.getElementById("refresh-audit");
+const refreshButton = document.getElementById("refreshBtn");
 const analysisInput = document.getElementById("analysis-text");
 const statusMessage = document.getElementById("status-message");
 const resultCard = document.getElementById("result-card");
 const resultContent = document.getElementById("result-content");
-const auditList = document.getElementById("audit-list");
+const recentChecks = document.getElementById("recentChecks");
 const statAnalyses = document.getElementById("stat-analyses");
 const statDetections = document.getElementById("stat-detections");
 const statReports = document.getElementById("stat-reports");
@@ -167,18 +167,22 @@ function renderResult(data) {
 }
 
 function renderAudit(entries) {
-  auditList.innerHTML = "";
-
-  if (!entries.length) {
-    auditList.classList.remove("event-feed");
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.textContent = "No checks recorded yet.";
-    auditList.appendChild(empty);
+  if (!recentChecks) {
     return;
   }
 
-  auditList.classList.add("event-feed");
+  recentChecks.innerHTML = "";
+
+  if (!entries.length) {
+    recentChecks.classList.remove("event-feed");
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "No checks recorded yet.";
+    recentChecks.appendChild(empty);
+    return;
+  }
+
+  recentChecks.classList.add("event-feed");
 
   entries
     .slice()
@@ -205,13 +209,13 @@ function renderAudit(entries) {
       input.textContent = formatAuditPreview(entry.input);
 
       item.append(meta, input);
-      auditList.appendChild(item);
+      recentChecks.appendChild(item);
     });
 }
 
-async function loadAudit() {
-  if (refreshAuditButton) {
-    refreshAuditButton.disabled = true;
+async function loadRecentChecks() {
+  if (refreshButton) {
+    refreshButton.disabled = true;
   }
 
   try {
@@ -226,15 +230,19 @@ async function loadAudit() {
     const entries = await response.json();
     renderAudit(entries);
   } catch (error) {
-    auditList.innerHTML = "";
+    if (!recentChecks) {
+      return;
+    }
+
+    recentChecks.innerHTML = "";
 
     const empty = document.createElement("div");
     empty.className = "empty-state";
     empty.textContent = error.message;
-    auditList.appendChild(empty);
+    recentChecks.appendChild(empty);
   } finally {
-    if (refreshAuditButton) {
-      refreshAuditButton.disabled = false;
+    if (refreshButton) {
+      refreshButton.disabled = false;
     }
   }
 }
@@ -292,7 +300,7 @@ async function analyzeInput() {
 
     renderResult(payload);
     setStatus("Analysis complete.");
-    await Promise.all([loadAudit(), loadStats()]);
+    await Promise.all([loadRecentChecks(), loadStats()]);
   } catch (error) {
     setStatus(error.message);
   } finally {
@@ -347,8 +355,8 @@ async function reportLatestAnalysis() {
 }
 
 analyzeButton.addEventListener("click", analyzeInput);
-if (refreshAuditButton) {
-  refreshAuditButton.addEventListener("click", loadAudit);
+if (refreshButton) {
+  refreshButton.addEventListener("click", loadRecentChecks);
 }
 scenarioButtons.forEach((button) => {
   button.addEventListener("click", () => fillScenario(button.dataset.scenario));
@@ -360,5 +368,5 @@ analysisInput.addEventListener("keydown", (event) => {
   }
 });
 
-loadAudit();
+loadRecentChecks();
 loadStats();
