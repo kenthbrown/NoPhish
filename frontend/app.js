@@ -46,13 +46,14 @@ function renderResult(data) {
   latestAnalysis = {
     text: analysisInput.value.trim(),
     result: data.result,
-    score: data.score,
+    score: data.confidence,
   };
 
   resultCard.classList.remove("hidden");
   resultBadge.textContent = data.result;
   resultBadge.className = `result-badge ${getResultClass(data.result)}`;
-  confidenceValue.textContent = data.score;
+  const confidence = typeof data.confidence === "number" ? data.confidence : 0;
+  confidenceValue.textContent = `${confidence}%`;
   reportStatus.textContent = "";
   reportButton.disabled = false;
 
