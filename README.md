@@ -19,6 +19,13 @@ NoPhish is a cybersecurity demo website for helping users identify possible phis
 - Demo scenario buttons for safe, suspicious, and likely phishing examples
 - Plain HTML, CSS, and JavaScript frontend with result cards, audit history, and security dashboard polish
 
+## Level 4 Features
+
+- Domain similarity detection for trusted-brand lookalikes
+- Weighted risk scoring with clear Safe, Suspicious, and Likely Phishing tiers
+- Attack type classification for phishing techniques such as urgency language, credential harvesting, shortened URLs, and impersonation
+- Security dashboard metrics including threat detections and most impersonated brand
+
 ## Run Locally
 
 ```bash

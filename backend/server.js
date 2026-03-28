@@ -8,12 +8,12 @@ const auditLog = [];
 const reportedItems = [];
 
 const keywordSignals = [
-  { term: "verify", points: 10 },
-  { term: "login", points: 10 },
-  { term: "password", points: 10 },
-  { term: "account", points: 10 },
-  { term: "bank", points: 10 },
-  { term: "click here", points: 10 },
+  { term: "verify", points: 5 },
+  { term: "login", points: 5 },
+  { term: "password", points: 5 },
+  { term: "account", points: 5 },
+  { term: "bank", points: 5 },
+  { term: "click here", points: 5 },
 ];
 
 const urgencySignals = ["urgent", "immediately", "asap", "action required", "suspended"];
@@ -257,7 +257,7 @@ function detectDomainSignals(urls) {
         `brand:${primaryDomain}:${closestBrand.domain}`,
         `Possible brand impersonation targeting ${closestBrand.domain}`,
         "Trusted brand impersonation detected",
-        28,
+        40,
         "Brand Impersonation",
         closestBrand.domain
       );
@@ -280,15 +280,15 @@ function buildDangerExplanation(result, domainSignals, keywordMatches, hasUrgenc
     (keywordMatches.length ? "Credential Harvesting" : null);
 
   if (targetBrand && mainTechnique === "Lookalike Domain") {
-    return `This URL appears to imitate ${targetBrand} using a deceptive lookalike domain and could be used to steal credentials.`;
+    return `This input appears to impersonate ${targetBrand} using a lookalike domain and credential-harvesting language.`;
   }
 
   if (targetBrand && mainTechnique === "Brand Impersonation") {
-    return `This content appears to target ${targetBrand} using brand impersonation to make the request seem trustworthy.`;
+    return `This input appears to target ${targetBrand} using brand impersonation to make the request look legitimate.`;
   }
 
   if (targetBrand && keywordMatches.length) {
-    return `This content appears to target ${targetBrand} and uses login-themed language that could be used to steal account credentials.`;
+    return `This input appears to target ${targetBrand} and uses credential-harvesting language that could be used to steal account details.`;
   }
 
   if (mainTechnique === "Shortened URL") {
@@ -340,7 +340,7 @@ function analyzeText(text) {
 
   const hasUrgency = urgencySignals.some((term) => normalizedText.includes(term));
   if (hasUrgency) {
-    addSignal("urgency", "Urgency language detected", "Urgency language detected", 16, "Urgency Language");
+    addSignal("urgency", "Urgency language detected", "Urgency language detected", 15, "Urgency Language");
   }
 
   keywordSignals.forEach((signal) => {
@@ -350,7 +350,7 @@ function analyzeText(text) {
         `keyword:${signal.term}`,
         `Contains suspicious keyword: "${signal.term}"`,
         `Suspicious keyword detected: ${signal.term}`,
-        signal.term === "bank" ? 8 : 6,
+        signal.points,
         ["verify", "login", "password", "account"].includes(signal.term) ? "Credential Harvesting" : null
       );
     }
@@ -363,20 +363,20 @@ function analyzeText(text) {
 
   if (hasAtSymbolInUrl(text)) {
     addSignal(
-        "obscured-destination",
-        'URL contains "@" which can obscure the true destination',
-        'Obscured destination pattern detected',
-        18,
-        "Suspicious Domain Pattern"
-      );
-    }
+      "obscured-destination",
+      'URL contains "@" which can obscure the true destination',
+      'Obscured destination pattern detected',
+      15,
+      "Suspicious Domain Pattern"
+    );
+  }
 
   if (hasLongRandomLookingString(text)) {
     addSignal(
         "random-string",
         "Contains a long random-looking string",
         "Long random-looking string detected",
-        16,
+        12,
         "Suspicious Domain Pattern"
       );
     }

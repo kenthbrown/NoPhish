@@ -73,6 +73,20 @@ function formatAuditPreview(value) {
   return normalized.length > 88 ? `${normalized.slice(0, 85)}...` : normalized;
 }
 
+function getAttackTypeDisplay(tag) {
+  const iconMap = {
+    "Urgency Language": "⚠️",
+    "Credential Harvesting": "🔐",
+    "Shortened URL": "🌐",
+    "Insecure Link": "🔓",
+    "Lookalike Domain": "🕵️",
+    "Brand Impersonation": "🏷️",
+    "Suspicious Domain Pattern": "🚩",
+  };
+
+  return `${iconMap[tag] || "•"} ${tag}`;
+}
+
 function renderResult(data) {
   if (!resultCard || !resultContent) {
     return;
@@ -113,7 +127,7 @@ function renderResult(data) {
     </div>
 
     <div class="result-meta">
-      <p class="confidence-line"><strong>Confidence:</strong> <span class="confidence-value">${confidence}%</span></p>
+      <p class="confidence-line"><strong>Risk Score:</strong> <span class="confidence-value">${confidence}%</span></p>
     </div>
 
     ${targetBrand ? `
@@ -127,7 +141,7 @@ function renderResult(data) {
       <div>
         <h3>Attack Types</h3>
         <ul class="tag-list">
-          ${tags.map((tag) => `<li>${escapeHtml(tag)}</li>`).join("")}
+          ${tags.map((tag) => `<li>${escapeHtml(getAttackTypeDisplay(tag))}</li>`).join("")}
         </ul>
       </div>
     ` : ""}
