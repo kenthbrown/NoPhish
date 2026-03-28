@@ -276,7 +276,7 @@ function buildDangerExplanation(result, domainSignals, keywordMatches, hasUrgenc
     domainSignals.find((signal) => signal.tag === "Lookalike Domain")?.tag ||
     domainSignals.find((signal) => signal.tag === "Brand Impersonation")?.tag ||
     domainSignals.find((signal) => signal.tag === "Shortened URL")?.tag ||
-    (hasUrgency ? "Urgency Language" : null) ||
+    (hasUrgency ? "Social Engineering" : null) ||
     (keywordMatches.length ? "Credential Harvesting" : null);
 
   if (targetBrand && mainTechnique === "Lookalike Domain") {
@@ -292,14 +292,14 @@ function buildDangerExplanation(result, domainSignals, keywordMatches, hasUrgenc
   }
 
   if (mainTechnique === "Shortened URL") {
-    return "This content hides its real destination behind a shortened link, making it harder to verify where the user would actually land.";
+    return "This input uses a shortened URL to obscure the destination and could redirect users to a credential theft or malware page.";
   }
 
   if (hasUrgency && keywordMatches.length) {
-    return "This message combines urgency with account-related language, a common tactic used to pressure people into acting before they can verify the request.";
+    return "This input uses urgency-based social engineering and account-related language to pressure users into revealing sensitive information.";
   }
 
-  return "This content shows phishing-style warning signs that could pressure a user into clicking a link, sharing credentials, or trusting a deceptive sender.";
+  return "This input shows phishing-style warning signs that could pressure a user into clicking a deceptive link or sharing sensitive information.";
 }
 
 function analyzeText(text) {
@@ -340,7 +340,7 @@ function analyzeText(text) {
 
   const hasUrgency = urgencySignals.some((term) => normalizedText.includes(term));
   if (hasUrgency) {
-    addSignal("urgency", "Urgency language detected", "Urgency language detected", 15, "Urgency Language");
+    addSignal("urgency", "Urgency language detected", "Social engineering language detected", 20, "Social Engineering");
   }
 
   keywordSignals.forEach((signal) => {
@@ -477,7 +477,7 @@ app.get("/stats", (_req, res) => {
     });
   });
 
-  const mostImpersonatedBrand = Object.entries(brandCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "None";
+  const mostImpersonatedBrand = Object.entries(brandCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
 
   res.json({
     totalReports: reportedItems.length,

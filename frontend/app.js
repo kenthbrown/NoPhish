@@ -87,6 +87,20 @@ function getAttackTypeDisplay(tag) {
   return `${iconMap[tag] || "•"} ${tag}`;
 }
 
+function getAttackTypeMarkup(tag) {
+  const iconMap = {
+    "Social Engineering": "&#9888;&#65039;",
+    "Credential Harvesting": "&#128274;",
+    "Shortened URL": "&#127760;",
+    "Insecure Link": "&#128275;",
+    "Lookalike Domain": "&#128373;&#65039;",
+    "Brand Impersonation": "&#127991;&#65039;",
+    "Suspicious Domain Pattern": "&#128681;",
+  };
+
+  return `${iconMap[tag] || "&bull;"} ${escapeHtml(tag)}`;
+}
+
 function renderResult(data) {
   if (!resultCard || !resultContent) {
     return;
@@ -141,7 +155,7 @@ function renderResult(data) {
       <div>
         <h3>Attack Types</h3>
         <ul class="tag-list">
-          ${tags.map((tag) => `<li>${escapeHtml(getAttackTypeDisplay(tag))}</li>`).join("")}
+          ${tags.map((tag) => `<li>${getAttackTypeMarkup(tag)}</li>`).join("")}
         </ul>
       </div>
     ` : ""}
@@ -275,12 +289,12 @@ async function loadStats() {
     setElementText(statAnalyses, stats.totalAnalyses);
     setElementText(statDetections, stats.totalDetections);
     setElementText(statReports, stats.totalReports);
-    setElementText(statBrand, stats.mostImpersonatedBrand);
+    setElementText(statBrand, stats.mostImpersonatedBrand || "—");
   } catch (_error) {
     setElementText(statAnalyses, "-");
     setElementText(statDetections, "-");
     setElementText(statReports, "-");
-    setElementText(statBrand, "-");
+    setElementText(statBrand, "—");
   }
 }
 
