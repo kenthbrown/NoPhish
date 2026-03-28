@@ -7,9 +7,17 @@ const resultCard = document.getElementById("result-card");
 const resultBadge = document.getElementById("result-badge");
 const confidenceValue = document.getElementById("confidence-value");
 const reasonsList = document.getElementById("reasons-list");
+const breakdownList = document.getElementById("breakdown-list");
+const dangerExplanation = document.getElementById("danger-explanation");
+const reportButton = document.getElementById("report-button");
+const reportStatus = document.getElementById("report-status");
 const auditList = document.getElementById("audit-list");
+const statAnalyses = document.getElementById("stat-analyses");
+const statDetections = document.getElementById("stat-detections");
+const statReports = document.getElementById("stat-reports");
 const defaultAnalyzeLabel = analyzeButton.textContent;
 const exampleText = "URGENT: Verify your account now at bit.ly/login-secure";
+let latestAnalysis = null;
 
 function getResultClass(result) {
   if (result === "Safe") {
@@ -35,12 +43,21 @@ function formatTimestamp(value) {
 }
 
 function renderResult(data) {
+  latestAnalysis = {
+    text: analysisInput.value.trim(),
+    result: data.result,
+    score: data.score,
+  };
+
   resultCard.classList.remove("hidden");
   resultBadge.textContent = data.result;
   resultBadge.className = `result-badge ${getResultClass(data.result)}`;
-  confidenceValue.textContent = data.confidence;
+  confidenceValue.textContent = data.score;
+  reportStatus.textContent = "";
+  reportButton.disabled = false;
 
   reasonsList.innerHTML = "";
+  breakdownList.innerHTML = "";
 
   const reasons = data.reasons.length
     ? data.reasons
@@ -51,6 +68,18 @@ function renderResult(data) {
     item.textContent = reason;
     reasonsList.appendChild(item);
   });
+
+  const breakdownItems = data.breakdown.length
+    ? data.breakdown
+    : ["No risk points were added."];
+
+  breakdownItems.forEach((entry) => {
+    const item = document.createElement("li");
+    item.textContent = entry;
+    breakdownList.appendChild(item);
+  });
+
+  dangerExplanation.textContent = data.explanation;
 }
 
 function renderAudit(entries) {
@@ -119,6 +148,27 @@ async function loadAudit() {
   }
 }
 
+async function loadStats() {
+  try {
+    const response = await fetch("/stats", {
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw new Error("Unable to load stats.");
+    }
+
+    const stats = await response.json();
+    statAnalyses.textContent = stats.totalAnalyses;
+    statDetections.textContent = stats.phishingDetections;
+    statReports.textContent = stats.totalReports;
+  } catch (_error) {
+    statAnalyses.textContent = "-";
+    statDetections.textContent = "-";
+    statReports.textContent = "-";
+  }
+}
+
 async function analyzeInput() {
   const text = analysisInput.value.trim();
 
@@ -149,7 +199,7 @@ async function analyzeInput() {
 
     renderResult(payload);
     setStatus("Analysis complete.");
-    await loadAudit();
+    await Promise.all([loadAudit(), loadStats()]);
   } catch (error) {
     setStatus(error.message);
   } finally {
@@ -164,9 +214,42 @@ function fillExample() {
   setStatus("Example loaded. Click Analyze to test it.");
 }
 
+async function reportLatestAnalysis() {
+  if (!latestAnalysis) {
+    reportStatus.textContent = "Run an analysis before reporting.";
+    return;
+  }
+
+  reportButton.disabled = true;
+  reportStatus.textContent = "Submitting report...";
+
+  try {
+    const response = await fetch("/report", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(latestAnalysis),
+    });
+
+    const payload = await response.json();
+
+    if (!response.ok) {
+      throw new Error(payload.error || "Unable to submit report.");
+    }
+
+    reportStatus.textContent = payload.message;
+    await loadStats();
+  } catch (error) {
+    reportStatus.textContent = error.message;
+    reportButton.disabled = false;
+  }
+}
+
 analyzeButton.addEventListener("click", analyzeInput);
 exampleButton.addEventListener("click", fillExample);
 refreshAuditButton.addEventListener("click", loadAudit);
+reportButton.addEventListener("click", reportLatestAnalysis);
 
 analysisInput.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
@@ -175,3 +258,4 @@ analysisInput.addEventListener("keydown", (event) => {
 });
 
 loadAudit();
+loadStats();
