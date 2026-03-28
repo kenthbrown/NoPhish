@@ -25,9 +25,17 @@
         <div class="actions">
           <div class="action-buttons">
             <button id="analyze-button" class="analyze-button">Analyze</button>
-            <button id="example-button" class="secondary-button" type="button">Try Example</button>
           </div>
           <p id="status-message" class="status-message" aria-live="polite"></p>
+        </div>
+
+        <div class="scenario-section">
+          <p class="scenario-label">Demo Scenarios</p>
+          <div class="scenario-buttons">
+            <button class="scenario-button" type="button" data-scenario="safe">Safe Site</button>
+            <button class="scenario-button" type="button" data-scenario="suspicious">Lookalike Login</button>
+            <button class="scenario-button" type="button" data-scenario="likely">Urgent Reset Scam</button>
+          </div>
         </div>
       </section>
 
@@ -45,12 +53,16 @@
             <strong id="stat-analyses">0</strong>
           </article>
           <article class="stat-item">
-            <span class="stat-label">Phishing Detections</span>
+            <span class="stat-label">Suspicious / Phishing Detections</span>
             <strong id="stat-detections">0</strong>
           </article>
           <article class="stat-item">
             <span class="stat-label">Reports Submitted</span>
             <strong id="stat-reports">0</strong>
+          </article>
+          <article class="stat-item">
+            <span class="stat-label">Most Impersonated Brand</span>
+            <strong id="stat-brand" class="stat-brand">None</strong>
           </article>
         </div>
       </section>

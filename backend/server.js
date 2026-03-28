@@ -126,13 +126,13 @@ function detectDomainSignals(urls) {
   const signals = [];
   const seen = new Set();
 
-  function addSignal(key, reason, breakdown, points) {
+  function addSignal(key, reason, breakdown, points, tag, brand) {
     if (seen.has(key)) {
       return;
     }
 
     seen.add(key);
-    signals.push({ reason, breakdown, points });
+    signals.push({ key, reason, breakdown, points, tag, brand: brand || null });
   }
 
   urls.forEach((url) => {
@@ -144,7 +144,8 @@ function detectDomainSignals(urls) {
         `http:${url.host}`,
         "URL uses insecure HTTP instead of HTTPS",
         "Insecure HTTP link detected (+15)",
-        15
+        15,
+        "Insecure Link"
       );
     }
 
@@ -153,7 +154,8 @@ function detectDomainSignals(urls) {
         `subdomains:${url.host}`,
         "URL uses excessive subdomains",
         "Excessive subdomains detected (+20)",
-        20
+        20,
+        "Suspicious Domain Pattern"
       );
     }
 
@@ -162,7 +164,8 @@ function detectDomainSignals(urls) {
         `shortener:${primaryDomain}`,
         `Uses URL shortener: "${primaryDomain}"`,
         "Shortened URL detected (+25)",
-        25
+        25,
+        "Shortened URL"
       );
     }
 
@@ -177,7 +180,9 @@ function detectDomainSignals(urls) {
           `lookalike:${primaryDomain}:${trustedDomain}`,
           `Possible lookalike domain impersonating ${trustedDomain}`,
           `Lookalike domain detected (+35)`,
-          35
+          35,
+          "Lookalike Domain",
+          trustedDomain
         );
         return;
       }
@@ -188,7 +193,9 @@ function detectDomainSignals(urls) {
           `brand:${primaryDomain}:${trustedDomain}`,
           `Possible brand impersonation targeting ${trustedDomain}`,
           `Trusted brand impersonation detected (+25)`,
-          25
+          25,
+          "Brand Impersonation",
+          trustedDomain
         );
       }
     });
@@ -221,50 +228,78 @@ function analyzeText(text) {
   const normalizedText = text.toLowerCase();
   const reasons = [];
   const breakdown = [];
+  const tags = [];
+  const impersonatedBrands = [];
   const urls = extractInspectableUrls(text);
   const keywordMatches = [];
+  const seenSignals = new Set();
   let score = 0;
 
-  function addSignal(reason, detail, points) {
+  function addTag(tag) {
+    if (tag && !tags.includes(tag)) {
+      tags.push(tag);
+    }
+  }
+
+  function addBrand(brand) {
+    if (brand && !impersonatedBrands.includes(brand)) {
+      impersonatedBrands.push(brand);
+    }
+  }
+
+  function addSignal(key, reason, detail, points, tag, brand) {
+    if (seenSignals.has(key)) {
+      return;
+    }
+
+    seenSignals.add(key);
     reasons.push(reason);
     breakdown.push(`${detail} (+${points})`);
     score += points;
+    addTag(tag);
+    addBrand(brand);
   }
 
   const hasUrgency = urgencySignals.some((term) => normalizedText.includes(term));
   if (hasUrgency) {
-    addSignal("Urgency language detected", "Urgency language detected", 20);
+    addSignal("urgency", "Urgency language detected", "Urgency language detected", 20, "Urgency Language");
   }
 
   keywordSignals.forEach((signal) => {
     if (normalizedText.includes(signal.term)) {
       keywordMatches.push(signal.term);
       addSignal(
+        `keyword:${signal.term}`,
         `Contains suspicious keyword: "${signal.term}"`,
         `Suspicious keyword detected: ${signal.term}`,
-        signal.points
+        signal.points,
+        ["verify", "login", "password", "account"].includes(signal.term) ? "Credential Harvesting" : null
       );
     }
   });
 
   const domainSignals = detectDomainSignals(urls);
   domainSignals.forEach((signal) => {
-    addSignal(signal.reason, signal.breakdown, signal.points);
+    addSignal(signal.key, signal.reason, signal.breakdown, signal.points, signal.tag, signal.brand);
   });
 
   if (hasAtSymbolInUrl(text)) {
     addSignal(
+      "obscured-destination",
       'URL contains "@" which can obscure the true destination',
       'Obscured destination pattern detected',
-      20
+      20,
+      "Suspicious Domain Pattern"
     );
   }
 
   if (hasLongRandomLookingString(text)) {
     addSignal(
+      "random-string",
       "Contains a long random-looking string",
       "Long random-looking string detected",
-      20
+      20,
+      "Suspicious Domain Pattern"
     );
   }
 
@@ -285,6 +320,8 @@ function analyzeText(text) {
     reasons,
     score,
     breakdown,
+    tags,
+    impersonatedBrands,
     explanation,
   };
 }
@@ -305,6 +342,8 @@ app.post("/analyze", (req, res) => {
     input: text,
     result: analysis.result,
     score: analysis.confidence,
+    tags: analysis.tags,
+    impersonatedBrands: analysis.impersonatedBrands,
   });
 
   return res.json(analysis);
@@ -339,12 +378,24 @@ app.get("/audit", (_req, res) => {
 });
 
 app.get("/stats", (_req, res) => {
-  const phishingDetections = auditLog.filter((entry) => entry.result === "Likely Phishing").length;
+  const totalDetections = auditLog.filter(
+    (entry) => entry.result === "Suspicious" || entry.result === "Likely Phishing"
+  ).length;
+  const brandCounts = {};
+
+  auditLog.forEach((entry) => {
+    (entry.impersonatedBrands || []).forEach((brand) => {
+      brandCounts[brand] = (brandCounts[brand] || 0) + 1;
+    });
+  });
+
+  const mostImpersonatedBrand = Object.entries(brandCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "None";
 
   res.json({
     totalReports: reportedItems.length,
     totalAnalyses: auditLog.length,
-    phishingDetections,
+    totalDetections,
+    mostImpersonatedBrand,
   });
 });
 

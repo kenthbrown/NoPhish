@@ -1,5 +1,4 @@
 const analyzeButton = document.getElementById("analyze-button");
-const exampleButton = document.getElementById("example-button");
 const refreshAuditButton = document.getElementById("refresh-audit");
 const analysisInput = document.getElementById("analysis-text");
 const statusMessage = document.getElementById("status-message");
@@ -9,8 +8,15 @@ const auditList = document.getElementById("audit-list");
 const statAnalyses = document.getElementById("stat-analyses");
 const statDetections = document.getElementById("stat-detections");
 const statReports = document.getElementById("stat-reports");
+const statBrand = document.getElementById("stat-brand");
+const scenarioButtons = document.querySelectorAll("[data-scenario]");
 const defaultAnalyzeLabel = analyzeButton.textContent;
-const exampleText = "URGENT: Verify your account now at bit.ly/login-secure";
+const scenarios = {
+  safe: "https://www.apple.com/support/ This is the official support page for your account settings.",
+  suspicious: "Please review your login at https://paypaI.com-security-check.net before your account is limited.",
+  likely:
+    "URGENT: Your password expires today. Verify now at bit.ly/reset-now or your bank account will be suspended.",
+};
 let latestAnalysis = null;
 
 function getResultClass(result) {
@@ -23,6 +29,18 @@ function getResultClass(result) {
   }
 
   return "result-suspicious";
+}
+
+function getRiskCardClass(result) {
+  if (result === "Safe") {
+    return "risk-safe";
+  }
+
+  if (result === "Likely Phishing") {
+    return "risk-likely-phishing";
+  }
+
+  return "risk-suspicious";
 }
 
 function setStatus(message) {
@@ -66,6 +84,7 @@ function renderResult(data) {
   const explanation = typeof data.explanation === "string" && data.explanation.trim()
     ? data.explanation
     : "No additional explanation is available for this result.";
+  const tags = Array.isArray(data.tags) && data.tags.length ? data.tags : [];
 
   latestAnalysis = {
     text: analysisInput.value.trim(),
@@ -74,6 +93,8 @@ function renderResult(data) {
   };
 
   resultCard.classList.remove("hidden");
+  resultCard.classList.remove("risk-safe", "risk-suspicious", "risk-likely-phishing");
+  resultCard.classList.add(getRiskCardClass(data.result));
   resultContent.innerHTML = `
     <div class="section-header">
       <h2>Analysis Result</h2>
@@ -83,6 +104,15 @@ function renderResult(data) {
     <div class="result-meta">
       <p class="confidence-line"><strong>Confidence:</strong> <span class="confidence-value">${confidence}%</span></p>
     </div>
+
+    ${tags.length ? `
+      <div>
+        <h3>Attack Types</h3>
+        <ul class="tag-list">
+          ${tags.map((tag) => `<li>${escapeHtml(tag)}</li>`).join("")}
+        </ul>
+      </div>
+    ` : ""}
 
     <div>
       <h3>Reasons</h3>
@@ -122,12 +152,15 @@ function renderAudit(entries) {
   auditList.innerHTML = "";
 
   if (!entries.length) {
+    auditList.classList.remove("event-feed");
     const empty = document.createElement("div");
     empty.className = "empty-state";
     empty.textContent = "No checks recorded yet.";
     auditList.appendChild(empty);
     return;
   }
+
+  auditList.classList.add("event-feed");
 
   entries
     .slice()
@@ -151,7 +184,7 @@ function renderAudit(entries) {
 
       const input = document.createElement("p");
       input.className = "audit-input";
-      input.textContent = entry.input;
+      input.textContent = entry.input.length > 120 ? `${entry.input.slice(0, 117)}...` : entry.input;
 
       item.append(meta, input);
       auditList.appendChild(item);
@@ -200,12 +233,14 @@ async function loadStats() {
 
     const stats = await response.json();
     setElementText(statAnalyses, stats.totalAnalyses);
-    setElementText(statDetections, stats.phishingDetections);
+    setElementText(statDetections, stats.totalDetections);
     setElementText(statReports, stats.totalReports);
+    setElementText(statBrand, stats.mostImpersonatedBrand);
   } catch (_error) {
     setElementText(statAnalyses, "-");
     setElementText(statDetections, "-");
     setElementText(statReports, "-");
+    setElementText(statBrand, "-");
   }
 }
 
@@ -248,10 +283,10 @@ async function analyzeInput() {
   }
 }
 
-function fillExample() {
-  analysisInput.value = exampleText;
+function fillScenario(name) {
+  analysisInput.value = scenarios[name] || scenarios.likely;
   analysisInput.focus();
-  setStatus("Example loaded. Click Analyze to test it.");
+  setStatus("Demo scenario loaded. Click Analyze to test it.");
 }
 
 async function reportLatestAnalysis() {
@@ -294,10 +329,12 @@ async function reportLatestAnalysis() {
 }
 
 analyzeButton.addEventListener("click", analyzeInput);
-exampleButton.addEventListener("click", fillExample);
 if (refreshAuditButton) {
   refreshAuditButton.addEventListener("click", loadAudit);
 }
+scenarioButtons.forEach((button) => {
+  button.addEventListener("click", () => fillScenario(button.dataset.scenario));
+});
 
 analysisInput.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
