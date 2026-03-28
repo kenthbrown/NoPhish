@@ -17,6 +17,14 @@ const suspiciousKeywords = [
 ];
 
 const urlShorteners = ["bit.ly", "tinyurl", "goo.gl"];
+const trustedDomains = [
+  "paypal.com",
+  "amazon.com",
+  "microsoft.com",
+  "bankofamerica.com",
+  "apple.com",
+  "google.com",
+];
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "../frontend")));
@@ -24,6 +32,28 @@ app.use(express.static(path.join(__dirname, "../frontend")));
 function getDomainLikeSegments(text) {
   const matches = text.match(/\b(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)/gi);
   return matches || [];
+}
+
+function normalizeHost(segment) {
+  return segment
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .split(/[/?#:]/)[0]
+    .toLowerCase();
+}
+
+function getPrimaryDomain(host) {
+  const parts = host.split(".").filter(Boolean);
+
+  if (parts.length < 2) {
+    return host;
+  }
+
+  return parts.slice(-2).join(".");
+}
+
+function getDomainsFromText(text) {
+  return getDomainLikeSegments(text).map((segment) => getPrimaryDomain(normalizeHost(segment)));
 }
 
 function hasMultipleDotsInDomain(text) {
@@ -48,41 +78,102 @@ function hasLongRandomLookingString(text) {
   return /\b[a-z0-9]{18,}\b/i.test(text);
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildLookalikeRegex(domain) {
+  let pattern = "";
+
+  for (let index = 0; index < domain.length; index += 1) {
+    const char = domain[index];
+
+    if (char === "l" || char === "i") {
+      pattern += "[li1I]";
+    } else if (char === "o") {
+      pattern += "[o0]";
+    } else if (char === "m") {
+      pattern += "(?:m|rn)";
+    } else {
+      pattern += escapeRegExp(char);
+    }
+  }
+
+  return new RegExp(`^${pattern}$`, "i");
+}
+
+function detectLookalikeDomains(text) {
+  const matchedReasons = [];
+  const seenReasons = new Set();
+  const candidateDomains = getDomainsFromText(text);
+
+  candidateDomains.forEach((candidate) => {
+    trustedDomains.forEach((trustedDomain) => {
+      if (candidate === trustedDomain) {
+        return;
+      }
+
+      const trustedRegex = buildLookalikeRegex(trustedDomain);
+
+      if (trustedRegex.test(candidate)) {
+        const reason = `Possible lookalike domain impersonating ${trustedDomain}`;
+
+        if (!seenReasons.has(reason)) {
+          seenReasons.add(reason);
+          matchedReasons.push(reason);
+        }
+      }
+    });
+  });
+
+  return matchedReasons;
+}
+
 function analyzeText(text) {
   const reasons = [];
   const normalizedText = text.toLowerCase();
+  let riskScore = 0;
+
+  function addReason(reason, weight = 1) {
+    reasons.push(reason);
+    riskScore += weight;
+  }
 
   suspiciousKeywords.forEach((keyword) => {
     if (normalizedText.includes(keyword)) {
-      reasons.push(`Contains suspicious keyword: "${keyword}"`);
+      addReason(`Contains suspicious keyword: "${keyword}"`);
     }
   });
 
   urlShorteners.forEach((shortener) => {
     if (normalizedText.includes(shortener)) {
-      reasons.push(`Uses URL shortener: "${shortener}"`);
+      addReason(`Uses URL shortener: "${shortener}"`);
     }
   });
 
   if (hasMultipleDotsInDomain(text)) {
-    reasons.push("URL contains multiple dots in the domain");
+    addReason("URL contains multiple dots in the domain");
   }
 
   if (hasAtSymbolInUrl(text)) {
-    reasons.push('URL contains "@" which can obscure the true destination');
+    addReason('URL contains "@" which can obscure the true destination');
   }
 
   if (hasLongRandomLookingString(text)) {
-    reasons.push("Contains a long random-looking string");
+    addReason("Contains a long random-looking string");
   }
+
+  detectLookalikeDomains(text).forEach((reason) => {
+    addReason(reason, 2);
+  });
 
   let result = "Safe";
   let confidence = "Low";
 
-  if (reasons.length >= 3) {
+  if (riskScore >= 3) {
     result = "Likely Phishing";
     confidence = "High";
-  } else if (reasons.length >= 1) {
+  } else if (riskScore >= 1) {
     result = "Suspicious";
     confidence = "Medium";
   }
