@@ -5,17 +5,18 @@ const app = express();
 const PORT = 3000;
 
 const auditLog = [];
+const reportedItems = [];
 
-const suspiciousKeywords = [
-  "urgent",
-  "verify",
-  "login",
-  "password",
-  "account",
-  "bank",
-  "click here",
+const keywordSignals = [
+  { term: "verify", points: 10 },
+  { term: "login", points: 10 },
+  { term: "password", points: 10 },
+  { term: "account", points: 10 },
+  { term: "bank", points: 10 },
+  { term: "click here", points: 10 },
 ];
 
+const urgencySignals = ["urgent", "immediately", "asap", "action required", "suspended"];
 const urlShorteners = ["bit.ly", "tinyurl", "goo.gl"];
 const trustedDomains = [
   "paypal.com",
@@ -29,22 +30,25 @@ const trustedDomains = [
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "../frontend")));
 
-function getDomainLikeSegments(text) {
-  const matches = text.match(/\b(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)/gi);
+function getUrlCandidates(text) {
+  const matches = text.match(/\b(?:https?:\/\/|www\.)[^\s<>"']+/gi);
   return matches || [];
 }
 
-function normalizeHost(segment) {
-  return segment
-    .replace(/^https?:\/\//i, "")
-    .replace(/^www\./i, "")
-    .split(/[/?#:]/)[0]
-    .toLowerCase();
+function getDomainLikeSegments(text) {
+  const matches = text.match(/\b(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+[^\s<>"']*/gi);
+  return matches || [];
+}
+
+function normalizeHost(host) {
+  return host
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .replace(/\.+$/, "");
 }
 
 function getPrimaryDomain(host) {
   const parts = host.split(".").filter(Boolean);
-
   if (parts.length < 2) {
     return host;
   }
@@ -52,22 +56,34 @@ function getPrimaryDomain(host) {
   return parts.slice(-2).join(".");
 }
 
-function getDomainsFromText(text) {
-  return getDomainLikeSegments(text).map((segment) => getPrimaryDomain(normalizeHost(segment)));
+function getSubdomainCount(host) {
+  const parts = host.split(".").filter(Boolean);
+  return Math.max(parts.length - 2, 0);
 }
 
-function hasMultipleDotsInDomain(text) {
-  const segments = getDomainLikeSegments(text);
+function safeParseUrl(candidate) {
+  try {
+    const withScheme = /^[a-z]+:\/\//i.test(candidate) ? candidate : `https://${candidate}`;
+    const parsed = new URL(withScheme);
 
-  return segments.some((segment) => {
-    const normalized = segment
-      .replace(/^https?:\/\//i, "")
-      .replace(/^www\./i, "")
-      .split(/[/?#:]/)[0];
+    return {
+      raw: candidate,
+      protocol: parsed.protocol.toLowerCase(),
+      host: normalizeHost(parsed.hostname),
+      pathname: parsed.pathname,
+      href: parsed.href,
+    };
+  } catch (_error) {
+    return null;
+  }
+}
 
-    const dotCount = (normalized.match(/\./g) || []).length;
-    return dotCount >= 2;
-  });
+function extractInspectableUrls(text) {
+  const candidates = [...new Set([...getUrlCandidates(text), ...getDomainLikeSegments(text)])];
+
+  return candidates
+    .map((candidate) => safeParseUrl(candidate))
+    .filter((value) => value && value.host.includes("."));
 }
 
 function hasAtSymbolInUrl(text) {
@@ -102,86 +118,173 @@ function buildLookalikeRegex(domain) {
   return new RegExp(`^${pattern}$`, "i");
 }
 
-function detectLookalikeDomains(text) {
-  const matchedReasons = [];
-  const seenReasons = new Set();
-  const candidateDomains = getDomainsFromText(text);
+function getBrandToken(domain) {
+  return domain.split(".")[0];
+}
 
-  candidateDomains.forEach((candidate) => {
+function detectDomainSignals(urls) {
+  const signals = [];
+  const seen = new Set();
+
+  function addSignal(key, reason, breakdown, points) {
+    if (seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    signals.push({ reason, breakdown, points });
+  }
+
+  urls.forEach((url) => {
+    const primaryDomain = getPrimaryDomain(url.host);
+    const subdomainCount = getSubdomainCount(url.host);
+
+    if (url.protocol === "http:") {
+      addSignal(
+        `http:${url.host}`,
+        "URL uses insecure HTTP instead of HTTPS",
+        "Insecure HTTP link detected (+15)",
+        15
+      );
+    }
+
+    if (subdomainCount >= 2) {
+      addSignal(
+        `subdomains:${url.host}`,
+        "URL uses excessive subdomains",
+        "Excessive subdomains detected (+20)",
+        20
+      );
+    }
+
+    if (urlShorteners.includes(primaryDomain)) {
+      addSignal(
+        `shortener:${primaryDomain}`,
+        `Uses URL shortener: "${primaryDomain}"`,
+        "Shortened URL detected (+25)",
+        25
+      );
+    }
+
     trustedDomains.forEach((trustedDomain) => {
-      if (candidate === trustedDomain) {
+      if (primaryDomain === trustedDomain) {
         return;
       }
 
-      const trustedRegex = buildLookalikeRegex(trustedDomain);
+      const lookalikeRegex = buildLookalikeRegex(trustedDomain);
+      if (lookalikeRegex.test(primaryDomain)) {
+        addSignal(
+          `lookalike:${primaryDomain}:${trustedDomain}`,
+          `Possible lookalike domain impersonating ${trustedDomain}`,
+          `Lookalike domain detected (+35)`,
+          35
+        );
+        return;
+      }
 
-      if (trustedRegex.test(candidate)) {
-        const reason = `Possible lookalike domain impersonating ${trustedDomain}`;
-
-        if (!seenReasons.has(reason)) {
-          seenReasons.add(reason);
-          matchedReasons.push(reason);
-        }
+      const trustedToken = getBrandToken(trustedDomain);
+      if (primaryDomain.includes(trustedToken)) {
+        addSignal(
+          `brand:${primaryDomain}:${trustedDomain}`,
+          `Possible brand impersonation targeting ${trustedDomain}`,
+          `Trusted brand impersonation detected (+25)`,
+          25
+        );
       }
     });
   });
 
-  return matchedReasons;
+  return signals;
+}
+
+function buildDangerExplanation(result, domainSignals, keywordMatches, hasUrgency) {
+  if (result === "Safe") {
+    return "This content did not trigger any major phishing indicators in the current heuristic checks.";
+  }
+
+  if (domainSignals.some((signal) => signal.reason.includes("lookalike domain"))) {
+    return "This content appears to mimic a trusted brand with a deceptive domain, which could trick someone into entering credentials or payment details.";
+  }
+
+  if (domainSignals.some((signal) => signal.reason.includes("URL shortener"))) {
+    return "This content hides its real destination behind a shortened link, making it harder to verify where the user would actually land.";
+  }
+
+  if (hasUrgency && keywordMatches.length) {
+    return "This message combines urgency with account-related language, a common tactic used to pressure people into acting before they can verify the request.";
+  }
+
+  return "This content shows phishing-style warning signs that could pressure a user into clicking a link, sharing credentials, or trusting a deceptive sender.";
 }
 
 function analyzeText(text) {
-  const reasons = [];
   const normalizedText = text.toLowerCase();
-  let riskScore = 0;
+  const reasons = [];
+  const breakdown = [];
+  const urls = extractInspectableUrls(text);
+  const keywordMatches = [];
+  let score = 0;
 
-  function addReason(reason, weight = 1) {
+  function addSignal(reason, detail, points) {
     reasons.push(reason);
-    riskScore += weight;
+    breakdown.push(`${detail} (+${points})`);
+    score += points;
   }
 
-  suspiciousKeywords.forEach((keyword) => {
-    if (normalizedText.includes(keyword)) {
-      addReason(`Contains suspicious keyword: "${keyword}"`);
+  const hasUrgency = urgencySignals.some((term) => normalizedText.includes(term));
+  if (hasUrgency) {
+    addSignal("Urgency language detected", "Urgency language detected", 20);
+  }
+
+  keywordSignals.forEach((signal) => {
+    if (normalizedText.includes(signal.term)) {
+      keywordMatches.push(signal.term);
+      addSignal(
+        `Contains suspicious keyword: "${signal.term}"`,
+        `Suspicious keyword detected: ${signal.term}`,
+        signal.points
+      );
     }
   });
 
-  urlShorteners.forEach((shortener) => {
-    if (normalizedText.includes(shortener)) {
-      addReason(`Uses URL shortener: "${shortener}"`);
-    }
+  const domainSignals = detectDomainSignals(urls);
+  domainSignals.forEach((signal) => {
+    addSignal(signal.reason, signal.breakdown, signal.points);
   });
-
-  if (hasMultipleDotsInDomain(text)) {
-    addReason("URL contains multiple dots in the domain");
-  }
 
   if (hasAtSymbolInUrl(text)) {
-    addReason('URL contains "@" which can obscure the true destination');
+    addSignal(
+      'URL contains "@" which can obscure the true destination',
+      'Obscured destination pattern detected',
+      20
+    );
   }
 
   if (hasLongRandomLookingString(text)) {
-    addReason("Contains a long random-looking string");
+    addSignal(
+      "Contains a long random-looking string",
+      "Long random-looking string detected",
+      20
+    );
   }
 
-  detectLookalikeDomains(text).forEach((reason) => {
-    addReason(reason, 2);
-  });
+  score = Math.min(score, 100);
 
   let result = "Safe";
-  let confidence = "Low";
-
-  if (riskScore >= 3) {
+  if (score >= 60) {
     result = "Likely Phishing";
-    confidence = "High";
-  } else if (riskScore >= 1) {
+  } else if (score > 0) {
     result = "Suspicious";
-    confidence = "Medium";
   }
+
+  const explanation = buildDangerExplanation(result, domainSignals, keywordMatches, hasUrgency);
 
   return {
     result,
     reasons,
-    confidence,
+    score,
+    breakdown,
+    explanation,
   };
 }
 
@@ -200,13 +303,48 @@ app.post("/analyze", (req, res) => {
     timestamp: new Date().toISOString(),
     input: text,
     result: analysis.result,
+    score: analysis.score,
   });
 
   return res.json(analysis);
 });
 
+app.post("/report", (req, res) => {
+  const { text, result, score } = req.body || {};
+
+  if (typeof text !== "string" || !text.trim()) {
+    return res.status(400).json({
+      error: 'The request body must include a non-empty "text" field.',
+    });
+  }
+
+  const report = {
+    timestamp: new Date().toISOString(),
+    text,
+    result: typeof result === "string" ? result : "Suspicious",
+    score: typeof score === "number" ? score : null,
+  };
+
+  reportedItems.push(report);
+
+  return res.json({
+    message: "Reported for review.",
+    report,
+  });
+});
+
 app.get("/audit", (_req, res) => {
   res.json(auditLog);
+});
+
+app.get("/stats", (_req, res) => {
+  const phishingDetections = auditLog.filter((entry) => entry.result === "Likely Phishing").length;
+
+  res.json({
+    totalReports: reportedItems.length,
+    totalAnalyses: auditLog.length,
+    phishingDetections,
+  });
 });
 
 app.listen(PORT, () => {
