@@ -94,8 +94,12 @@ function renderAudit(entries) {
 }
 
 async function loadAudit() {
+  refreshAuditButton.disabled = true;
+
   try {
-    const response = await fetch("/audit");
+    const response = await fetch("/audit", {
+      cache: "no-store",
+    });
 
     if (!response.ok) {
       throw new Error("Unable to load audit log.");
@@ -110,6 +114,8 @@ async function loadAudit() {
     empty.className = "empty-state";
     empty.textContent = error.message;
     auditList.appendChild(empty);
+  } finally {
+    refreshAuditButton.disabled = false;
   }
 }
 
