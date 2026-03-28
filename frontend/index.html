@@ -67,10 +67,26 @@
         </div>
       </section>
 
+      <section class="card chart-card">
+        <div class="section-header">
+          <h2>Threat Overview</h2>
+        </div>
+        <div id="chart-bars" class="chart-bars"></div>
+      </section>
+
       <section class="card audit-card">
         <div class="section-header">
           <h2>Recent Checks</h2>
-          <button id="refreshBtn" class="secondary-button" type="button">Refresh</button>
+          <div class="action-buttons">
+            <button id="refreshBtn" class="secondary-button" type="button">Refresh</button>
+          </div>
+        </div>
+
+        <div class="filter-buttons" id="filter-buttons">
+          <button class="filter-button active" type="button" data-filter="All">All</button>
+          <button class="filter-button" type="button" data-filter="Safe">Safe</button>
+          <button class="filter-button" type="button" data-filter="Suspicious">Suspicious</button>
+          <button class="filter-button" type="button" data-filter="Likely Phishing">Likely Phishing</button>
         </div>
 
         <div id="recentChecks" class="audit-list"></div>

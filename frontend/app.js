@@ -5,11 +5,13 @@ const statusMessage = document.getElementById("status-message");
 const resultCard = document.getElementById("result-card");
 const resultContent = document.getElementById("result-content");
 const recentChecks = document.getElementById("recentChecks");
+const chartBars = document.getElementById("chart-bars");
 const statAnalyses = document.getElementById("stat-analyses");
 const statDetections = document.getElementById("stat-detections");
 const statReports = document.getElementById("stat-reports");
 const statBrand = document.getElementById("stat-brand");
 const scenarioButtons = document.querySelectorAll("[data-scenario]");
+const filterButtons = document.querySelectorAll("[data-filter]");
 const defaultAnalyzeLabel = analyzeButton.textContent;
 const scenarios = {
   safe: "https://www.paypal.com",
@@ -17,6 +19,9 @@ const scenarios = {
   phishing: "URGENT: Verify your account now at bit.ly/login-secure",
 };
 let latestAnalysis = null;
+let latestAuditEntries = [];
+let activeFilter = "All";
+let autoRefreshId = null;
 
 function getResultClass(result) {
   if (result === "Safe") {
@@ -101,6 +106,68 @@ function getAttackTypeMarkup(tag) {
   return `${iconMap[tag] || "&bull;"} ${escapeHtml(tag)}`;
 }
 
+function buildAnalystSummary(result, attackTypes, targetBrand) {
+  if (result === "Safe") {
+    return "Analyst assessment: no meaningful phishing indicators were triggered by the current heuristics.";
+  }
+
+  const primaryType = attackTypes[0] || "deceptive messaging";
+  const brandText = targetBrand ? ` targeting ${targetBrand}` : "";
+
+  if (result === "Likely Phishing") {
+    return `Analyst assessment: this input shows strong signs of ${primaryType.toLowerCase()}${brandText}, indicating a likely phishing attempt.`;
+  }
+
+  return `Analyst assessment: this input shows moderate signs of ${primaryType.toLowerCase()}${brandText} and should be treated as suspicious pending further review.`;
+}
+
+function renderChart(entries) {
+  if (!chartBars) {
+    return;
+  }
+
+  const counts = {
+    Safe: 0,
+    Suspicious: 0,
+    "Likely Phishing": 0,
+  };
+
+  entries.forEach((entry) => {
+    if (counts[entry.result] !== undefined) {
+      counts[entry.result] += 1;
+    }
+  });
+
+  const maxCount = Math.max(1, ...Object.values(counts));
+  const chartConfig = [
+    { label: "Safe", value: counts.Safe, className: "result-safe" },
+    { label: "Suspicious", value: counts.Suspicious, className: "result-suspicious" },
+    { label: "Likely Phishing", value: counts["Likely Phishing"], className: "result-likely-phishing" },
+  ];
+
+  chartBars.innerHTML = chartConfig
+    .map(
+      (item) => `
+        <article class="chart-item">
+          <div class="chart-label-row">
+            <span>${item.label}</span>
+            <strong>${item.value}</strong>
+          </div>
+          <div class="chart-track">
+            <div class="chart-fill ${item.className}" style="width:${(item.value / maxCount) * 100}%"></div>
+          </div>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function applyFilterState() {
+  filterButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.filter === activeFilter);
+  });
+}
+
 function renderResult(data) {
   if (!resultCard || !resultContent) {
     return;
@@ -124,11 +191,19 @@ function renderResult(data) {
     : Array.isArray(data.tags) && data.tags.length
       ? data.tags
       : [];
+  const analystSummary = buildAnalystSummary(data.result, tags, targetBrand);
 
   latestAnalysis = {
     text: analysisInput.value.trim(),
     result: data.result,
-    score: confidence,
+    confidence,
+    attackTypes: tags,
+    reasons,
+    breakdown: breakdownItems,
+    targetBrand,
+    explanation,
+    analystSummary,
+    timestamp: new Date().toISOString(),
   };
 
   resultCard.classList.remove("hidden");
@@ -181,8 +256,14 @@ function renderResult(data) {
       <p class="danger-explanation">${escapeHtml(explanation)}</p>
     </div>
 
+    <div class="summary-box">
+      <h3>Analyst Summary</h3>
+      <p class="danger-explanation">${escapeHtml(analystSummary)}</p>
+    </div>
+
     <div class="result-actions">
       <button id="report-button" class="secondary-button" type="button">Report as Phishing</button>
+      <button id="export-button" class="secondary-button" type="button">Export Report</button>
       <p id="report-status" class="status-message" aria-live="polite"></p>
     </div>
   `;
@@ -192,6 +273,11 @@ function renderResult(data) {
     reportButton.disabled = false;
     reportButton.addEventListener("click", reportLatestAnalysis);
   }
+
+  const exportButton = document.getElementById("export-button");
+  if (exportButton) {
+    exportButton.addEventListener("click", exportLatestAnalysis);
+  }
 }
 
 function renderAudit(entries) {
@@ -200,19 +286,22 @@ function renderAudit(entries) {
   }
 
   recentChecks.innerHTML = "";
+  const filteredEntries = activeFilter === "All"
+    ? entries
+    : entries.filter((entry) => entry.result === activeFilter);
 
-  if (!entries.length) {
+  if (!filteredEntries.length) {
     recentChecks.classList.remove("event-feed");
     const empty = document.createElement("div");
     empty.className = "empty-state";
-    empty.textContent = "No checks recorded yet.";
+    empty.textContent = activeFilter === "All" ? "No checks recorded yet." : `No ${activeFilter.toLowerCase()} checks found.`;
     recentChecks.appendChild(empty);
     return;
   }
 
   recentChecks.classList.add("event-feed");
 
-  entries
+  filteredEntries
     .slice()
     .reverse()
     .slice(0, 5)
@@ -255,8 +344,9 @@ async function loadRecentChecks() {
       throw new Error("Unable to load audit log.");
     }
 
-    const entries = await response.json();
-    renderAudit(entries);
+    latestAuditEntries = await response.json();
+    renderAudit(latestAuditEntries);
+    renderChart(latestAuditEntries);
   } catch (error) {
     if (!recentChecks) {
       return;
@@ -296,6 +386,38 @@ async function loadStats() {
     setElementText(statReports, "-");
     setElementText(statBrand, "—");
   }
+}
+
+function exportLatestAnalysis() {
+  if (!latestAnalysis) {
+    setStatus("Run an analysis before exporting a report.");
+    return;
+  }
+
+  const exportPayload = {
+    analyzedInput: latestAnalysis.text,
+    result: latestAnalysis.result,
+    confidence: latestAnalysis.confidence,
+    attackTypes: latestAnalysis.attackTypes,
+    reasons: latestAnalysis.reasons,
+    breakdown: latestAnalysis.breakdown,
+    targetBrand: latestAnalysis.targetBrand,
+    explanation: latestAnalysis.explanation,
+    analystSummary: latestAnalysis.analystSummary,
+    timestamp: latestAnalysis.timestamp,
+  };
+
+  const blob = new Blob([JSON.stringify(exportPayload, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `nophish-report-${Date.now()}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 async function analyzeInput() {
@@ -389,6 +511,13 @@ if (refreshButton) {
 scenarioButtons.forEach((button) => {
   button.addEventListener("click", () => fillScenario(button.dataset.scenario));
 });
+filterButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    activeFilter = button.dataset.filter || "All";
+    applyFilterState();
+    renderAudit(latestAuditEntries);
+  });
+});
 
 analysisInput.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
@@ -398,3 +527,8 @@ analysisInput.addEventListener("keydown", (event) => {
 
 loadRecentChecks();
 loadStats();
+applyFilterState();
+
+autoRefreshId = window.setInterval(() => {
+  loadRecentChecks();
+}, 5000);

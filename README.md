@@ -26,6 +26,14 @@ NoPhish is a cybersecurity demo website for helping users identify possible phis
 - Attack type classification for phishing techniques such as urgency language, credential harvesting, shortened URLs, and impersonation
 - Security dashboard metrics including threat detections and most impersonated brand
 
+## Level 5 Features
+
+- Lightweight dashboard chart showing counts for Safe, Suspicious, and Likely Phishing analyses
+- Recent Checks auto-refresh every 5 seconds with manual refresh still available
+- Recent Checks filtering for All, Safe, Suspicious, and Likely Phishing events
+- Exportable JSON analysis reports including score, attack types, reasons, breakdown, target brand, explanation, and timestamp
+- Analyst Summary output for a concise SOC-style assessment of the latest analysis
+
 ## Run Locally
 
 ```bash
