@@ -78,6 +78,21 @@ function formatAuditPreview(value) {
   return normalized.length > 88 ? `${normalized.slice(0, 85)}...` : normalized;
 }
 
+function dedupeRecentChecks(entries) {
+  const seen = new Set();
+
+  return entries.filter((entry) => {
+    const key = `${entry.timestamp || ""}::${entry.input || ""}`;
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+}
+
 function getAttackTypeDisplay(tag) {
   const iconMap = {
     "Urgency Language": "⚠️",
@@ -344,7 +359,7 @@ async function loadRecentChecks() {
       throw new Error("Unable to load audit log.");
     }
 
-    latestAuditEntries = await response.json();
+    latestAuditEntries = dedupeRecentChecks(await response.json());
     renderAudit(latestAuditEntries);
     renderChart(latestAuditEntries);
   } catch (error) {
