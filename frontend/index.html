@@ -32,18 +32,26 @@
       </section>
 
       <section id="result-card" class="card result-card hidden" aria-live="polite">
+        <div id="result-content"></div>
+      </section>
+
+      <section class="card stats-card">
         <div class="section-header">
-          <h2>Analysis Result</h2>
-          <span id="result-badge" class="result-badge">Safe</span>
+          <h2>Security Snapshot</h2>
         </div>
-
-        <div class="result-meta">
-          <p><strong>Confidence:</strong> <span id="confidence-value">Low</span></p>
-        </div>
-
-        <div>
-          <h3>Reasons</h3>
-          <ul id="reasons-list" class="reasons-list"></ul>
+        <div id="stats-grid" class="stats-grid">
+          <article class="stat-item">
+            <span class="stat-label">Total Analyses</span>
+            <strong id="stat-analyses">0</strong>
+          </article>
+          <article class="stat-item">
+            <span class="stat-label">Phishing Detections</span>
+            <strong id="stat-detections">0</strong>
+          </article>
+          <article class="stat-item">
+            <span class="stat-label">Reports Submitted</span>
+            <strong id="stat-reports">0</strong>
+          </article>
         </div>
       </section>
 

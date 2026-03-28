@@ -1,13 +1,23 @@
 # NoPhish
 
-NoPhish is a cybersecurity demo website concept for helping users identify possible phishing attempts from pasted URLs or email text.
+NoPhish is a cybersecurity demo website for helping users identify possible phishing attempts from pasted URLs or email text.
 
-## Project Scope
+## Features
 
-This repository currently contains only the initial folder structure and starter documentation.
+- Express backend with heuristic phishing analysis
+- Numeric risk scoring from `0` to `100`
+- Confidence breakdown showing how each signal added points
+- Plain-English danger explanation for each analysis
+- URL and domain checks for shortened links, insecure `http`, excessive subdomains, and trusted-brand impersonation
+- In-memory audit log for recent checks
+- In-memory phishing reporting endpoint and simple security stats
+- Plain HTML, CSS, and JavaScript frontend with result cards, audit history, and stats
 
-## Planned Areas
+## Run Locally
 
-- `frontend/` for the user-facing demo interface
-- `backend/` for phishing analysis and API logic
-- `docs/` for architecture and planning notes
+```bash
+npm install
+npm start
+```
+
+Then open `http://localhost:3000`.

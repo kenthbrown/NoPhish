@@ -4,13 +4,7 @@ const refreshAuditButton = document.getElementById("refresh-audit");
 const analysisInput = document.getElementById("analysis-text");
 const statusMessage = document.getElementById("status-message");
 const resultCard = document.getElementById("result-card");
-const resultBadge = document.getElementById("result-badge");
-const confidenceValue = document.getElementById("confidence-value");
-const reasonsList = document.getElementById("reasons-list");
-const breakdownList = document.getElementById("breakdown-list");
-const dangerExplanation = document.getElementById("danger-explanation");
-const reportButton = document.getElementById("report-button");
-const reportStatus = document.getElementById("report-status");
+const resultContent = document.getElementById("result-content");
 const auditList = document.getElementById("audit-list");
 const statAnalyses = document.getElementById("stat-analyses");
 const statDetections = document.getElementById("stat-detections");
@@ -35,6 +29,21 @@ function setStatus(message) {
   statusMessage.textContent = message;
 }
 
+function setElementText(element, value) {
+  if (element) {
+    element.textContent = value;
+  }
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function formatTimestamp(value) {
   return new Date(value).toLocaleString([], {
     dateStyle: "medium",
@@ -43,44 +52,70 @@ function formatTimestamp(value) {
 }
 
 function renderResult(data) {
+  if (!resultCard || !resultContent) {
+    return;
+  }
+
+  const confidence = typeof data.confidence === "number" ? data.confidence : 0;
+  const reasons = Array.isArray(data.reasons) && data.reasons.length
+    ? data.reasons
+    : ["No phishing indicators were triggered by the current rules."];
+  const breakdownItems = Array.isArray(data.breakdown) && data.breakdown.length
+    ? data.breakdown
+    : [];
+  const explanation = typeof data.explanation === "string" && data.explanation.trim()
+    ? data.explanation
+    : "No additional explanation is available for this result.";
+
   latestAnalysis = {
     text: analysisInput.value.trim(),
     result: data.result,
-    score: data.confidence,
+    score: confidence,
   };
 
   resultCard.classList.remove("hidden");
-  resultBadge.textContent = data.result;
-  resultBadge.className = `result-badge ${getResultClass(data.result)}`;
-  const confidence = typeof data.confidence === "number" ? data.confidence : 0;
-  confidenceValue.textContent = `${confidence}%`;
-  reportStatus.textContent = "";
-  reportButton.disabled = false;
+  resultContent.innerHTML = `
+    <div class="section-header">
+      <h2>Analysis Result</h2>
+      <span class="result-badge ${getResultClass(data.result)}">${escapeHtml(data.result)}</span>
+    </div>
 
-  reasonsList.innerHTML = "";
-  breakdownList.innerHTML = "";
+    <div class="result-meta">
+      <p class="confidence-line"><strong>Confidence:</strong> <span class="confidence-value">${confidence}%</span></p>
+    </div>
 
-  const reasons = data.reasons.length
-    ? data.reasons
-    : ["No phishing indicators were triggered by the current rules."];
+    <div>
+      <h3>Reasons</h3>
+      <ul class="reasons-list">
+        ${reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}
+      </ul>
+    </div>
 
-  reasons.forEach((reason) => {
-    const item = document.createElement("li");
-    item.textContent = reason;
-    reasonsList.appendChild(item);
-  });
+    ${breakdownItems.length ? `
+      <div>
+        <h3>Confidence Breakdown</h3>
+        <ul class="reasons-list">
+          ${breakdownItems.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}
+        </ul>
+      </div>
+    ` : ""}
 
-  const breakdownItems = data.breakdown.length
-    ? data.breakdown
-    : ["No risk points were added."];
+    <div class="danger-box">
+      <h3>Why this is dangerous:</h3>
+      <p class="danger-explanation">${escapeHtml(explanation)}</p>
+    </div>
 
-  breakdownItems.forEach((entry) => {
-    const item = document.createElement("li");
-    item.textContent = entry;
-    breakdownList.appendChild(item);
-  });
+    <div class="result-actions">
+      <button id="report-button" class="secondary-button" type="button">Report as Phishing</button>
+      <p id="report-status" class="status-message" aria-live="polite"></p>
+    </div>
+  `;
 
-  dangerExplanation.textContent = data.explanation;
+  const reportButton = document.getElementById("report-button");
+  if (reportButton) {
+    reportButton.disabled = false;
+    reportButton.addEventListener("click", reportLatestAnalysis);
+  }
 }
 
 function renderAudit(entries) {
@@ -124,7 +159,9 @@ function renderAudit(entries) {
 }
 
 async function loadAudit() {
-  refreshAuditButton.disabled = true;
+  if (refreshAuditButton) {
+    refreshAuditButton.disabled = true;
+  }
 
   try {
     const response = await fetch("/audit", {
@@ -145,7 +182,9 @@ async function loadAudit() {
     empty.textContent = error.message;
     auditList.appendChild(empty);
   } finally {
-    refreshAuditButton.disabled = false;
+    if (refreshAuditButton) {
+      refreshAuditButton.disabled = false;
+    }
   }
 }
 
@@ -160,13 +199,13 @@ async function loadStats() {
     }
 
     const stats = await response.json();
-    statAnalyses.textContent = stats.totalAnalyses;
-    statDetections.textContent = stats.phishingDetections;
-    statReports.textContent = stats.totalReports;
+    setElementText(statAnalyses, stats.totalAnalyses);
+    setElementText(statDetections, stats.phishingDetections);
+    setElementText(statReports, stats.totalReports);
   } catch (_error) {
-    statAnalyses.textContent = "-";
-    statDetections.textContent = "-";
-    statReports.textContent = "-";
+    setElementText(statAnalyses, "-");
+    setElementText(statDetections, "-");
+    setElementText(statReports, "-");
   }
 }
 
@@ -216,13 +255,18 @@ function fillExample() {
 }
 
 async function reportLatestAnalysis() {
+  const reportButton = document.getElementById("report-button");
+  const reportStatus = document.getElementById("report-status");
+
   if (!latestAnalysis) {
-    reportStatus.textContent = "Run an analysis before reporting.";
+    setElementText(reportStatus, "Run an analysis before reporting.");
     return;
   }
 
-  reportButton.disabled = true;
-  reportStatus.textContent = "Submitting report...";
+  if (reportButton) {
+    reportButton.disabled = true;
+  }
+  setElementText(reportStatus, "Submitting report...");
 
   try {
     const response = await fetch("/report", {
@@ -239,18 +283,21 @@ async function reportLatestAnalysis() {
       throw new Error(payload.error || "Unable to submit report.");
     }
 
-    reportStatus.textContent = payload.message;
+    setElementText(reportStatus, payload.message);
     await loadStats();
   } catch (error) {
-    reportStatus.textContent = error.message;
-    reportButton.disabled = false;
+    setElementText(reportStatus, error.message);
+    if (reportButton) {
+      reportButton.disabled = false;
+    }
   }
 }
 
 analyzeButton.addEventListener("click", analyzeInput);
 exampleButton.addEventListener("click", fillExample);
-refreshAuditButton.addEventListener("click", loadAudit);
-reportButton.addEventListener("click", reportLatestAnalysis);
+if (refreshAuditButton) {
+  refreshAuditButton.addEventListener("click", loadAudit);
+}
 
 analysisInput.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
