@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NoPhish</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="hero-header">
+        <p class="eyebrow">Cybersecurity Demo</p>
+        <h1>NoPhish</h1>
+        <p class="tagline">Don&rsquo;t take the bait.</p>
+      </header>
+
+      <section class="hero card">
+        <label class="input-label" for="analysis-text">Paste a URL or email text</label>
+        <textarea
+          id="analysis-text"
+          class="analysis-input"
+          placeholder="Paste a suspicious link or email content here..."
+        ></textarea>
+
+        <div class="actions">
+          <div class="action-buttons">
+            <button id="analyze-button" class="analyze-button">Analyze</button>
+            <button id="example-button" class="secondary-button" type="button">Try Example</button>
+          </div>
+          <p id="status-message" class="status-message" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section id="result-card" class="card result-card hidden" aria-live="polite">
+        <div class="section-header">
+          <h2>Analysis Result</h2>
+          <span id="result-badge" class="result-badge">Safe</span>
+        </div>
+
+        <div class="result-meta">
+          <p><strong>Confidence:</strong> <span id="confidence-value">Low</span></p>
+        </div>
+
+        <div>
+          <h3>Reasons</h3>
+          <ul id="reasons-list" class="reasons-list"></ul>
+        </div>
+      </section>
+
+      <section class="card audit-card">
+        <div class="section-header">
+          <h2>Recent Checks</h2>
+          <button id="refresh-audit" class="secondary-button" type="button">Refresh</button>
+        </div>
+
+        <div id="audit-list" class="audit-list"></div>
+      </section>
+
+      <section class="card tips-card">
+        <h2>How to avoid phishing:</h2>
+        <ul class="tips-list">
+          <li>Don&rsquo;t click unknown links</li>
+          <li>Check domain names carefully</li>
+          <li>Avoid urgent messages</li>
+        </ul>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
