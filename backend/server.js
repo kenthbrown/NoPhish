@@ -281,6 +281,7 @@ function analyzeText(text) {
 
   return {
     result,
+    confidence: score,
     reasons,
     score,
     breakdown,
@@ -303,7 +304,7 @@ app.post("/analyze", (req, res) => {
     timestamp: new Date().toISOString(),
     input: text,
     result: analysis.result,
-    score: analysis.score,
+    score: analysis.confidence,
   });
 
   return res.json(analysis);
