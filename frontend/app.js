@@ -28,6 +28,7 @@ let latestAuditEntries = [];
 let activeFilter = "All";
 let autoRefreshId = null;
 let selectedScanKey = null;
+const EMPTY_DASH = "\u2014";
 
 function getResultClass(result) {
   if (result === "Safe") {
@@ -51,6 +52,18 @@ function getRiskCardClass(result) {
   }
 
   return "risk-suspicious";
+}
+
+function getRiskBarClass(score) {
+  if (score >= 60) {
+    return "score-danger";
+  }
+
+  if (score >= 30) {
+    return "score-suspicious";
+  }
+
+  return "score-safe";
 }
 
 function setStatus(message) {
@@ -82,6 +95,12 @@ function formatTimestamp(value) {
 function formatAuditPreview(value) {
   const normalized = String(value).replace(/\s+/g, " ").trim();
   return normalized.length > 88 ? `${normalized.slice(0, 85)}...` : normalized;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
 function getRecentCheckKey(entry) {
@@ -188,13 +207,11 @@ function renderChart(entries) {
 }
 
 function renderTrendStats(entries) {
-  const emptyValue = "\u2014";
-
   if (!entries.length) {
-    setElementText(trendHighest, emptyValue);
-    setElementText(trendAverage, emptyValue);
-    setElementText(trendLatestBrand, emptyValue);
-    setElementText(trendCommonAttack, emptyValue);
+    setElementText(trendHighest, EMPTY_DASH);
+    setElementText(trendAverage, EMPTY_DASH);
+    setElementText(trendLatestBrand, EMPTY_DASH);
+    setElementText(trendCommonAttack, EMPTY_DASH);
     return;
   }
 
@@ -205,7 +222,7 @@ function renderTrendStats(entries) {
   const average = scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : null;
   const latestBrand = [...entries]
     .reverse()
-    .find((entry) => typeof entry.targetBrand === "string" && entry.targetBrand.trim())?.targetBrand || emptyValue;
+    .find((entry) => typeof entry.targetBrand === "string" && entry.targetBrand.trim())?.targetBrand || EMPTY_DASH;
   const attackCounts = {};
 
   entries.forEach((entry) => {
@@ -214,10 +231,10 @@ function renderTrendStats(entries) {
     });
   });
 
-  const mostCommonAttack = Object.entries(attackCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || emptyValue;
+  const mostCommonAttack = Object.entries(attackCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || EMPTY_DASH;
 
-  setElementText(trendHighest, highest === null ? emptyValue : `${highest}%`);
-  setElementText(trendAverage, average === null ? emptyValue : `${average}%`);
+  setElementText(trendHighest, highest === null ? EMPTY_DASH : `${highest}%`);
+  setElementText(trendAverage, average === null ? EMPTY_DASH : `${average}%`);
   setElementText(trendLatestBrand, latestBrand);
   setElementText(trendCommonAttack, mostCommonAttack);
 }
@@ -252,6 +269,11 @@ function buildDetailsMarkup(entry) {
     <div class="result-meta">
       <p class="confidence-line"><strong>Risk Score:</strong> <span class="confidence-value">${confidence}%</span></p>
       <p class="confidence-line"><strong>Timestamp:</strong> ${escapeHtml(formatTimestamp(entry.timestamp))}</p>
+    </div>
+    <div class="score-bar-shell">
+      <div class="score-bar-track">
+        <div class="score-bar-fill ${getRiskBarClass(confidence)}" data-score-bar data-target-width="${confidence}%"></div>
+      </div>
     </div>
     <div>
       <h3>Analyzed Input</h3>
@@ -307,6 +329,52 @@ function renderScanDetails(entry) {
 
   scanDetails.className = "scan-details-content";
   scanDetails.innerHTML = buildDetailsMarkup(entry);
+  animateScoreBars(scanDetails);
+}
+
+function renderLoadingState() {
+  if (!resultCard || !resultContent) {
+    return;
+  }
+
+  resultCard.classList.remove("hidden", "risk-safe", "risk-suspicious", "risk-likely-phishing", "result-enter");
+  resultCard.classList.add("is-loading");
+  resultContent.innerHTML = `
+    <div class="skeleton-header">
+      <div class="skeleton skeleton-title"></div>
+      <div class="skeleton skeleton-pill"></div>
+    </div>
+    <div class="skeleton skeleton-score"></div>
+    <div class="skeleton skeleton-progress"></div>
+    <div class="skeleton-tags">
+      <span class="skeleton skeleton-tag"></span>
+      <span class="skeleton skeleton-tag"></span>
+      <span class="skeleton skeleton-tag"></span>
+    </div>
+    <div class="skeleton-list">
+      <div class="skeleton skeleton-line"></div>
+      <div class="skeleton skeleton-line"></div>
+      <div class="skeleton skeleton-line skeleton-line-short"></div>
+    </div>
+    <div class="skeleton-block">
+      <div class="skeleton skeleton-subtitle"></div>
+      <div class="skeleton skeleton-line"></div>
+      <div class="skeleton skeleton-line skeleton-line-short"></div>
+    </div>
+  `;
+}
+
+function animateScoreBars(scope = document) {
+  const bars = scope.querySelectorAll("[data-score-bar]");
+
+  bars.forEach((bar) => {
+    bar.style.width = "0%";
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        bar.style.width = bar.dataset.targetWidth || "0%";
+      });
+    });
+  });
 }
 
 function renderResult(data) {
@@ -348,7 +416,7 @@ function renderResult(data) {
   };
 
   resultCard.classList.remove("hidden");
-  resultCard.classList.remove("risk-safe", "risk-suspicious", "risk-likely-phishing");
+  resultCard.classList.remove("risk-safe", "risk-suspicious", "risk-likely-phishing", "is-loading", "result-enter");
   resultCard.classList.add(getRiskCardClass(data.result));
   resultContent.innerHTML = `
     <div class="section-header">
@@ -358,6 +426,12 @@ function renderResult(data) {
 
     <div class="result-meta">
       <p class="confidence-line"><strong>Risk Score:</strong> <span class="confidence-value">${confidence}%</span></p>
+    </div>
+
+    <div class="score-bar-shell">
+      <div class="score-bar-track">
+        <div class="score-bar-fill ${getRiskBarClass(confidence)}" data-score-bar data-target-width="${confidence}%"></div>
+      </div>
     </div>
 
     ${targetBrand ? `
@@ -419,6 +493,11 @@ function renderResult(data) {
   if (exportButton) {
     exportButton.addEventListener("click", exportLatestAnalysis);
   }
+
+  window.requestAnimationFrame(() => {
+    resultCard.classList.add("result-enter");
+    animateScoreBars(resultContent);
+  });
 }
 
 function renderAudit(entries) {
@@ -502,7 +581,7 @@ async function loadRecentChecks() {
       throw new Error("Unable to load audit log.");
     }
 
-    latestAuditEntries = dedupeRecentChecks(await response.json());
+    latestAuditEntries = dedupeRecentChecks(await response.json()).slice(-5);
     renderAudit(latestAuditEntries);
     renderChart(latestAuditEntries);
     renderTrendStats(latestAuditEntries);
@@ -550,12 +629,12 @@ async function loadStats() {
     setElementText(statAnalyses, stats.totalAnalyses);
     setElementText(statDetections, stats.totalDetections);
     setElementText(statReports, stats.totalReports);
-    setElementText(statBrand, stats.mostImpersonatedBrand || "—");
+    setElementText(statBrand, stats.mostImpersonatedBrand || EMPTY_DASH);
   } catch (_error) {
     setElementText(statAnalyses, "-");
     setElementText(statDetections, "-");
     setElementText(statReports, "-");
-    setElementText(statBrand, "—");
+    setElementText(statBrand, EMPTY_DASH);
   }
 }
 
@@ -603,15 +682,19 @@ async function analyzeInput() {
   analyzeButton.disabled = true;
   analyzeButton.textContent = "Analyzing...";
   setStatus("Analyzing...");
+  renderLoadingState();
 
   try {
-    const response = await fetch("/analyze", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ text }),
-    });
+    const [response] = await Promise.all([
+      fetch("/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text }),
+      }),
+      delay(1100),
+    ]);
 
     const payload = await response.json();
 
